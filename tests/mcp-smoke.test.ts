@@ -1,7 +1,10 @@
+import { existsSync } from 'node:fs';
 import { request } from 'node:http';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startServer, type ServerHandle } from './helpers/serverProcess.js';
+import { makeTempDatabase, type TempDatabase } from './helpers/tempDatabase.js';
 
 /**
  * End-to-end MCP smoke test.
@@ -30,14 +33,36 @@ interface ScheduleOutput {
   events: ScheduleEvent[];
 }
 
+interface TaskResult {
+  id: string;
+  title: string;
+  description?: string;
+  estimatedDurationMinutes: number;
+  deadline: string;
+  priority: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+interface TasksOutput {
+  taskTimeZone: string;
+  query: { startDeadline?: string; endDeadline?: string; status?: string };
+  count: number;
+  tasks: TaskResult[];
+}
+
 let server: ServerHandle;
+/** Every server in this file gets its own temporary SQLite database, never the development one. */
+let database: TempDatabase;
 
 beforeAll(async () => {
-  server = await startServer();
+  database = makeTempDatabase();
+  server = await startServer({ databasePath: database.path });
 });
 
 afterAll(async () => {
   await server?.stop();
+  database?.cleanup();
 });
 
 /** The two protocol generations the endpoint serves. Both must satisfy the hackathon floor of 2025-11-25. */
@@ -233,6 +258,206 @@ describe.each(ERAS)('MCP client over Streamable HTTP: $label', ({ options, era, 
     for (const r of results) expect(r.events.map((e) => e.id)).toEqual(results[0]!.events.map((e) => e.id));
   });
 
+  // ---- Phase 2: SQLite-backed get_tasks, exercised through the same real MCP client ----
+
+  async function tasks(args: Record<string, unknown> = {}): Promise<TasksOutput> {
+    const result = await client.callTool({ name: 'get_tasks', arguments: args });
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+    expect(result.structuredContent).toBeDefined();
+    return result.structuredContent as unknown as TasksOutput;
+  }
+
+  async function failingTasks(args: Record<string, unknown>) {
+    const result = await client.callTool({ name: 'get_tasks', arguments: args });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    const first = result.content[0];
+    expect(first?.type).toBe('text');
+    return first?.type === 'text' ? first.text : '';
+  }
+
+  const DAY = { startDeadline: '2026-10-22T00:00:00+05:30', endDeadline: '2026-10-23T00:00:00+05:30' };
+  const titles = (out: TasksOutput): string[] => out.tasks.map((t) => t.title);
+
+  it('lists both get_schedule and get_tasks through tools/list', async () => {
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name).sort()).toEqual(['get_schedule', 'get_tasks']);
+  });
+
+  it('discovers get_tasks with optional filters, an output schema and read-only annotations', async () => {
+    const { tools } = await client.listTools();
+    const tool = tools.find((t) => t.name === 'get_tasks');
+    expect(tool, 'get_tasks must be registered').toBeDefined();
+    expect(Object.keys(tool!.inputSchema.properties ?? {}).sort()).toEqual(['endDeadline', 'startDeadline', 'status']);
+    expect(tool!.inputSchema.required ?? []).toEqual([]);
+    expect(tool!.outputSchema).toBeDefined();
+    expect(tool!.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true, destructiveHint: false });
+  });
+
+  it('returns every seeded task, ordered by deadline, when called with no arguments at all', async () => {
+    const result = await client.callTool({ name: 'get_tasks' });
+    expect(result.isError).toBeFalsy();
+    const out = result.structuredContent as unknown as TasksOutput;
+    expect(out.taskTimeZone).toBe('Asia/Kolkata');
+    expect(out.query).toEqual({});
+    expect(out.count).toBe(5);
+    expect(out.tasks.map((t) => t.id)).toEqual(['task-004', 'task-002', 'task-003', 'task-001', 'task-005']);
+    const deadlines = out.tasks.map((t) => ISO(t.deadline));
+    expect(deadlines).toEqual([...deadlines].sort((a, b) => a - b));
+    expect((await tasks({})).tasks.map((t) => t.id)).toEqual(out.tasks.map((t) => t.id));
+  });
+
+  it('returns complete task records read from SQLite', async () => {
+    const out = await tasks();
+    const report = out.tasks.find((t) => t.id === 'task-001')!;
+    expect(report).toMatchObject({
+      title: 'Complete project report',
+      estimatedDurationMinutes: 120,
+      deadline: '2026-10-22T20:00:00+05:30',
+      priority: 'critical',
+      status: 'in_progress',
+    });
+    for (const t of out.tasks) {
+      for (const field of ['id', 'title', 'description', 'estimatedDurationMinutes', 'deadline', 'priority', 'status', 'createdAt', 'updatedAt']) {
+        expect(t, `${t.id}.${field}`).toHaveProperty(field);
+      }
+    }
+  });
+
+  it('is complementary to get_schedule: the project deadline is a task constraint, not a calendar event', async () => {
+    const day = await tasks(DAY);
+    const events = await schedule('2026-10-22T00:00:00+05:30', '2026-10-23T00:00:00+05:30');
+    expect(titles(day)).toContain('Complete project report');
+    expect(events.events.map((e) => e.title)).not.toContain('Complete project report');
+    expect(events.events.map((e) => e.title)).toContain('Project Deadline Work');
+  });
+
+  it('filters by status and returns different, correct sets', async () => {
+    const pending = await tasks({ status: 'pending' });
+    const progress = await tasks({ status: 'in_progress' });
+    const done = await tasks({ status: 'completed' });
+    expect(pending.tasks.map((t) => t.id)).toEqual(['task-002', 'task-003', 'task-005']);
+    expect(progress.tasks.map((t) => t.id)).toEqual(['task-001']);
+    expect(done.tasks.map((t) => t.id)).toEqual(['task-004']);
+    expect(pending.query).toEqual({ status: 'pending' });
+    expect(pending.count).toBe(3);
+  });
+
+  it('filters by deadline window, with an inclusive start and an exclusive end', async () => {
+    const day = await tasks(DAY);
+    expect(day.tasks.map((t) => t.id)).toEqual(['task-004', 'task-002', 'task-003', 'task-001']);
+    expect(day.query).toEqual(DAY);
+
+    const exact = await tasks({ startDeadline: '2026-10-22T13:30:00+05:30', endDeadline: '2026-10-22T13:31:00+05:30' });
+    expect(exact.tasks.map((t) => t.id)).toEqual(['task-002']);
+    const justBefore = await tasks({ startDeadline: '2026-10-22T13:00:00+05:30', endDeadline: '2026-10-22T13:30:00+05:30' });
+    expect(justBefore.count).toBe(0);
+
+    expect((await tasks({ startDeadline: '2026-10-22T18:00:00+05:30' })).tasks.map((t) => t.id)).toEqual(['task-003', 'task-001', 'task-005']);
+    expect((await tasks({ endDeadline: '2026-10-22T18:00:00+05:30' })).tasks.map((t) => t.id)).toEqual(['task-004', 'task-002']);
+  });
+
+  it('combines status and deadline filters', async () => {
+    const out = await tasks({ ...DAY, status: 'pending' });
+    expect(out.tasks.map((t) => t.id)).toEqual(['task-002', 'task-003']);
+    expect(out.query).toEqual({ ...DAY, status: 'pending' });
+  });
+
+  it('treats equivalent instants in other UTC offsets identically', async () => {
+    const ist = await tasks({ startDeadline: '2026-10-22T12:00:00+05:30', endDeadline: '2026-10-22T19:00:00+05:30' });
+    const utc = await tasks({ startDeadline: '2026-10-22T06:30:00Z', endDeadline: '2026-10-22T13:30:00Z' });
+    const us = await tasks({ startDeadline: '2026-10-22T01:30:00-05:00', endDeadline: '2026-10-22T08:30:00-05:00' });
+    expect(ist.tasks.map((t) => t.id)).toEqual(['task-002', 'task-003']);
+    expect(utc.tasks.map((t) => t.id)).toEqual(ist.tasks.map((t) => t.id));
+    expect(us.tasks.map((t) => t.id)).toEqual(ist.tasks.map((t) => t.id));
+  });
+
+  it('handles empty results as a normal outcome, not an error', async () => {
+    const none = await tasks({ startDeadline: '2026-11-01T00:00:00+05:30' });
+    expect(none.count).toBe(0);
+    expect(none.tasks).toEqual([]);
+    const combined = await tasks({ status: 'in_progress', startDeadline: '2026-10-23T00:00:00+05:30' });
+    expect(combined.count).toBe(0);
+
+    const result = await client.callTool({ name: 'get_tasks', arguments: { startDeadline: '2026-11-01T00:00:00+05:30' } });
+    expect(result.isError).toBeFalsy();
+    const first = result.content[0];
+    expect(first?.type === 'text' && first.text).toMatch(/^No tasks match/);
+  });
+
+  it('provides a readable text rendering alongside the structured result', async () => {
+    const result = await client.callTool({ name: 'get_tasks', arguments: { status: 'pending' } });
+    const first = result.content[0];
+    expect(first?.type).toBe('text');
+    const text = first?.type === 'text' ? first.text : '';
+    expect(text).toContain('3 tasks (status pending');
+    expect(text).toContain('1. Prepare for project review');
+    expect(text).toContain("2. Review teammate's deliverable");
+    expect(text.split('\n')).toHaveLength(4);
+  });
+
+  describe('get_tasks rejects invalid input with a clear tool error', () => {
+    it('unknown status', async () => {
+      const text = await failingTasks({ status: 'done' });
+      expect(text).toMatch(/status/);
+      expect(text).toMatch(/pending/);
+    });
+
+    it('malformed timestamp', async () => {
+      const text = await failingTasks({ startDeadline: 'tomorrow' });
+      expect(text).toMatch(/startDeadline/);
+      expect(text).toMatch(/explicit UTC offset/);
+    });
+
+    it('timestamp without a UTC offset', async () => {
+      const text = await failingTasks({ endDeadline: '2026-10-22T18:00:00' });
+      expect(text).toMatch(/endDeadline/);
+      expect(text).toMatch(/explicit UTC offset/);
+    });
+
+    it('impossible calendar date', async () => {
+      expect(await failingTasks({ startDeadline: '2026-02-30T12:00:00+05:30' })).toMatch(/startDeadline/);
+    });
+
+    it('end before start', async () => {
+      const text = await failingTasks({ startDeadline: '2026-10-22T18:00:00+05:30', endDeadline: '2026-10-22T12:00:00+05:30' });
+      expect(text).toMatch(/endDeadline must be strictly after startDeadline/);
+    });
+
+    it('end equal to start', async () => {
+      const text = await failingTasks({ startDeadline: '2026-10-22T12:00:00+05:30', endDeadline: '2026-10-22T12:00:00+05:30' });
+      expect(text).toMatch(/endDeadline must be strictly after startDeadline/);
+    });
+
+    it('wrong parameter types', async () => {
+      const text = await failingTasks({ startDeadline: 5, status: ['pending'] });
+      expect(text).toMatch(/startDeadline/);
+      expect(text).toMatch(/status/);
+    });
+  });
+
+  it('keeps serving correct results after invalid tool calls', async () => {
+    await failingTasks({ status: 'bogus' });
+    await failingTasks({ startDeadline: '2026-10-22T18:00:00+05:30', endDeadline: '2026-10-22T12:00:00+05:30' });
+    await failing({ startTime: 'nope', endTime: 'nope' });
+    expect((await tasks()).count).toBe(5);
+    expect((await schedule('2026-10-22T12:00:00+05:30', '2026-10-22T18:00:00+05:30')).count).toBe(5);
+  });
+
+  it('answers many concurrent mixed reads consistently', async () => {
+    const calls = Array.from({ length: 30 }, (_, i) =>
+      i % 2 === 0
+        ? tasks({ status: 'pending' }).then((o) => ({ kind: 'tasks' as const, ids: o.tasks.map((t) => t.id) }))
+        : schedule('2026-10-22T12:00:00+05:30', '2026-10-22T18:00:00+05:30').then((o) => ({
+            kind: 'events' as const,
+            ids: o.events.map((e) => e.id),
+          })),
+    );
+    const results = await Promise.all(calls);
+    for (const r of results.filter((x) => x.kind === 'tasks')) expect(r.ids).toEqual(['task-002', 'task-003', 'task-005']);
+    for (const r of results.filter((x) => x.kind === 'events')) expect(r.ids).toEqual(['evt-001', 'evt-002', 'evt-003', 'evt-004', 'evt-005']);
+  });
+
   it('rejects an unknown tool', async () => {
     const outcome = await client.callTool({ name: 'does_not_exist', arguments: {} }).then(
       (r) => ({ rejected: false as const, isError: r.isError }),
@@ -316,19 +541,50 @@ describe('server logs reflect real activity', () => {
     const logs = server.logs();
     expect(logs).toContain('Transport: Streamable HTTP');
     expect(logs).toContain(`Endpoint: ${server.url}`);
-    expect(logs).toContain('Tool registered: get_schedule');
+    expect(logs).toContain('Tool registered: get_schedule, get_tasks');
+    expect(logs).toContain(`Data source: SQLite ${server.databasePath} (schema v1, 6 events, 5 tasks)`);
+    expect(logs).toContain('Database seeding: inserted 6 events, 5 tasks');
     expect(logs).toContain('Tool: get_schedule | Requested interval: [2026-10-22T12:00:00+05:30, 2026-10-22T18:00:00+05:30)');
     expect(logs).toContain('Tool: get_schedule | Matching events: 5 | Status: success');
     expect(logs).toContain('Tool: get_schedule | Matching events: 0 | Status: success');
     expect(logs).toContain('Status: rejected | Reason: endTime must be strictly after startTime');
     expect(logs).toContain('Status: rejected | Invalid input | startTime');
+
+    // get_tasks activity: each line below corresponds to calls made by the tests above.
+    expect(logs).toContain('Tool: get_tasks | Filters: no filters');
+    expect(logs).toContain('Tool: get_tasks | Matching tasks: 5 | Status: success');
+    expect(logs).toContain('Tool: get_tasks | Filters: status pending');
+    expect(logs).toContain('Tool: get_tasks | Matching tasks: 3 | Status: success');
+    expect(logs).toContain('Tool: get_tasks | Matching tasks: 0 | Status: success');
+    expect(logs).toContain('Tool: get_tasks | Status: rejected | Reason: endDeadline must be strictly after startDeadline');
+    expect(logs).toContain('Tool: get_tasks | Status: rejected | Invalid input | status');
+    expect(logs).not.toMatch(/Status: failure/);
+    expect(logs).not.toMatch(/Uncaught exception|Unhandled rejection/);
   });
 
   it('shuts down cleanly on SIGTERM', async (ctx) => {
     if (server.external) ctx.skip();
     const exit = await server.stop();
     expect(exit).toEqual({ code: 0, signal: null });
-    expect(server.logs()).toContain('Received SIGTERM, shutting down');
-    expect(server.logs()).toContain('Shutdown complete');
+    const logs = server.logs();
+    expect(logs).toContain('Received SIGTERM, shutting down');
+    expect(logs).toContain('Shutdown complete');
+    // HTTP is drained first, then the database is closed, then shutdown is reported complete.
+    expect(logs.indexOf('Received SIGTERM')).toBeLessThan(logs.indexOf('Database closed'));
+    expect(logs.indexOf('Database closed')).toBeLessThan(logs.indexOf('Shutdown complete'));
+  });
+
+  it('releases the database on shutdown: no WAL/SHM leftovers and no lock held', (ctx) => {
+    if (server.external) ctx.skip();
+    expect(existsSync(`${database.path}-wal`)).toBe(false);
+    expect(existsSync(`${database.path}-shm`)).toBe(false);
+    const db = new Database(database.path);
+    try {
+      db.pragma('busy_timeout = 0');
+      db.exec('BEGIN EXCLUSIVE; COMMIT;'); // would throw SQLITE_BUSY if the server still held the file
+      expect((db.prepare('SELECT COUNT(*) AS n FROM tasks').get() as { n: number }).n).toBe(5);
+    } finally {
+      db.close();
+    }
   });
 });

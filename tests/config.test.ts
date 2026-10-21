@@ -1,16 +1,18 @@
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, parseConfig } from '../apps/mcp-server/src/config.js';
 import { allowedHostnames } from '../apps/mcp-server/src/http.js';
 
 describe('parseConfig', () => {
   it('applies local-development defaults', () => {
-    expect(parseConfig({})).toEqual({
+    expect(parseConfig({}, '/work')).toEqual({
       host: '127.0.0.1',
       port: 3001,
       path: '/mcp',
       appEnv: 'development',
       logLevel: 'info',
       allowedHosts: [],
+      databasePath: resolve('/work', 'data/planrescue.sqlite'),
     });
   });
 
@@ -35,6 +37,29 @@ describe('parseConfig', () => {
 
   it('treats empty strings as unset', () => {
     expect(parseConfig({ MCP_PORT: '', MCP_PATH: '' }).port).toBe(3001);
+    expect(parseConfig({ DATABASE_PATH: '' }, '/work').databasePath).toBe(resolve('/work', 'data/planrescue.sqlite'));
+  });
+
+  describe('DATABASE_PATH', () => {
+    it('resolves a relative path against the base directory', () => {
+      expect(parseConfig({ DATABASE_PATH: 'var/db.sqlite' }, '/srv/app').databasePath).toBe(resolve('/srv/app', 'var/db.sqlite'));
+      expect(parseConfig({ DATABASE_PATH: './x/../y.sqlite' }, '/srv/app').databasePath).toBe(resolve('/srv/app', 'y.sqlite'));
+    });
+
+    it('keeps an absolute path as given', () => {
+      expect(parseConfig({ DATABASE_PATH: '/var/lib/planrescue/plan.sqlite' }, '/srv/app').databasePath).toBe(
+        '/var/lib/planrescue/plan.sqlite',
+      );
+    });
+
+    it('defaults to the process working directory as base', () => {
+      expect(parseConfig({}).databasePath).toBe(resolve(process.cwd(), 'data/planrescue.sqlite'));
+    });
+
+    it.each([[':memory:'], ['file:plan.db?mode=memory']])('rejects the non-persistent location %s', (value) => {
+      expect(() => parseConfig({ DATABASE_PATH: value })).toThrow(ConfigError);
+      expect(() => parseConfig({ DATABASE_PATH: value })).toThrow(/DATABASE_PATH/);
+    });
   });
 
   it.each([

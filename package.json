@@ -2,7 +2,7 @@
   "name": "planrescue",
   "version": "0.1.0",
   "private": true,
-  "description": "PlanRescue: consequence-aware schedule recovery. Phase 0 and 1: MCP server foundation (Streamable HTTP).",
+  "description": "PlanRescue: consequence-aware schedule recovery. Phase 0-2: MCP server (Streamable HTTP) with SQLite-backed get_schedule and get_tasks.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -14,18 +14,23 @@
     "start:mcp": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && vitest run",
-    "test:unit": "vitest run tests/time.test.ts tests/seed-data.test.ts tests/config.test.ts tests/server-meta.test.ts",
+    "test:unit": "vitest run tests/time.test.ts tests/seed-data.test.ts tests/config.test.ts tests/server-meta.test.ts tests/database.test.ts tests/sqlite-schedule-repository.test.ts tests/sqlite-task-repository.test.ts",
+    "test:db": "vitest run tests/database.test.ts tests/sqlite-schedule-repository.test.ts tests/sqlite-task-repository.test.ts",
     "test:mcp": "npm run build && vitest run tests/mcp-smoke.test.ts",
+    "test:persistence": "npm run build && vitest run tests/persistence.test.ts",
     "demo:client": "tsx scripts/demo-client.ts",
+    "db:inspect": "tsx scripts/db-inspect.ts",
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",
     "@modelcontextprotocol/node": "^2.1.1",
     "@modelcontextprotocol/server": "^2.3.1",
+    "better-sqlite3": "13.0.3",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
     "@types/node": "^22.20.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

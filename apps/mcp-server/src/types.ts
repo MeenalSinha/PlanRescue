@@ -2,6 +2,11 @@ import * as z from 'zod/v4';
 
 export const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;
 export const CATEGORIES = ['meeting', 'focus', 'medical', 'deadline_work', 'personal'] as const;
+export const TASK_STATUSES = ['pending', 'in_progress', 'completed'] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+/** Upper bound for a single task estimate: one week of minutes. Mirrored by a CHECK constraint in the database. */
+export const MAX_TASK_DURATION_MINUTES = 10_080;
 
 /**
  * Calendar event as stored by a schedule repository.
@@ -32,11 +37,55 @@ export interface TimeRange {
 }
 
 /**
- * Data-access seam for calendar events. The Phase 1 implementation reads seeded
- * data; a later phase can supply a database-backed implementation without any
- * change to the MCP server or the tool.
+ * Data-access seam for calendar events. Implemented by the in-memory seed repository
+ * (Phase 1, still used by unit tests) and by the SQLite repository (Phase 2, used by the
+ * running server). The MCP server and tools depend only on this interface.
  */
 export interface ScheduleRepository {
   /** Events overlapping the range, in chronological order. */
   findOverlapping(range: TimeRange): Promise<ScheduleEvent[]>;
+}
+
+/**
+ * A unit of work that must be fitted around calendar events. Unlike an event, a task has
+ * no fixed slot: it has an estimated effort and a deadline. Deadlines are absolute instants
+ * written as ISO 8601 with an explicit UTC offset, so the user's local time is preserved.
+ */
+export const taskSchema = z.object({
+  id: z.string().min(1).describe('Stable task identifier'),
+  title: z.string().trim().min(1).describe('Human-readable task title'),
+  description: z.string().optional().describe('Optional details about the task'),
+  estimatedDurationMinutes: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TASK_DURATION_MINUTES)
+    .describe('Estimated effort in whole minutes'),
+  deadline: z.string().describe('ISO 8601 deadline with explicit UTC offset'),
+  priority: z.enum(PRIORITIES).describe('Importance of the task'),
+  status: z.enum(TASK_STATUSES).describe('Completion status'),
+  createdAt: z.string().describe('ISO 8601 UTC timestamp of creation'),
+  updatedAt: z.string().describe('ISO 8601 UTC timestamp of the last modification'),
+});
+export type Task = z.infer<typeof taskSchema>;
+
+/**
+ * Task filter. Every field is optional and an omitted field imposes no restriction.
+ * The deadline window is half-open, [deadlineFromMs, deadlineToMs), matching calendar queries.
+ */
+export interface TaskQuery {
+  /** Inclusive lower bound on the deadline, in epoch milliseconds. */
+  deadlineFromMs?: number;
+  /** Exclusive upper bound on the deadline, in epoch milliseconds. */
+  deadlineToMs?: number;
+  status?: TaskStatus;
+}
+
+/** Data-access seam for tasks. */
+export interface TaskRepository {
+  /**
+   * Tasks matching the filter, ordered by deadline, then priority (critical first), then id.
+   * Throws InvalidQueryError for an unusable filter; an empty result is a normal outcome.
+   */
+  findTasks(query?: TaskQuery): Promise<Task[]>;
 }

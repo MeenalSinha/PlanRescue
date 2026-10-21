@@ -7,3 +7,11 @@ coverage/
 !.env.example
 .DS_Store
 *.tsbuildinfo
+
+# Local SQLite database (generated at startup; never commit)
+/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.db

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import * as z from 'zod/v4';
 
 const envSchema = z.object({
@@ -12,6 +13,14 @@ const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   MCP_ALLOWED_HOSTS: z.string().default(''),
+  DATABASE_PATH: z
+    .string()
+    .trim()
+    .min(1)
+    .refine((value) => value !== ':memory:' && !value.startsWith('file:'), {
+      message: 'must be a filesystem path; in-memory (":memory:") and URI databases are not supported because data must persist',
+    })
+    .default('./data/planrescue.sqlite'),
 });
 
 export interface Config {
@@ -22,6 +31,8 @@ export interface Config {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   /** Extra hostnames accepted by the Host header guard (beyond loopback names). */
   allowedHosts: string[];
+  /** Absolute path of the SQLite database file. Relative values are resolved against the working directory. */
+  databasePath: string;
 }
 
 export class ConfigError extends Error {
@@ -31,8 +42,12 @@ export class ConfigError extends Error {
   }
 }
 
-/** Parse and validate configuration from an environment-like object. */
-export function parseConfig(env: Record<string, string | undefined>): Config {
+/**
+ * Parse and validate configuration from an environment-like object.
+ * `baseDir` is the directory relative paths (currently only DATABASE_PATH) resolve against;
+ * it defaults to the process working directory, the same place `.env` is loaded from.
+ */
+export function parseConfig(env: Record<string, string | undefined>, baseDir: string = process.cwd()): Config {
   // Treat empty strings as "unset" so a bare `MCP_PORT=` in .env falls back to the default.
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ''));
   const result = envSchema.safeParse(cleaned);
@@ -50,6 +65,7 @@ export function parseConfig(env: Record<string, string | undefined>): Config {
     allowedHosts: v.MCP_ALLOWED_HOSTS.split(',')
       .map((h) => h.trim())
       .filter(Boolean),
+    databasePath: resolve(baseDir, v.DATABASE_PATH),
   };
 }
 
