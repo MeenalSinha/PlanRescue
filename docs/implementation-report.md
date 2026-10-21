@@ -49,6 +49,8 @@ How the checklist's MCP items were verified: the MCP client negotiates a protoco
 | `tests/helpers/tempDatabase.ts` | New. Isolated temporary database files |
 | `tests/mcp-smoke.test.ts`, `tests/helpers/serverProcess.ts`, `tests/config.test.ts` | Extended. Existing assertions kept; the server helper now passes a temporary `DATABASE_PATH`; the default-config test now includes `databasePath` |
 | `package.json`, `package-lock.json` | Added `better-sqlite3` 13.0.3 and `@types/better-sqlite3` 9.6.0 (exact pins); new scripts `test:db`, `test:persistence`, `db:inspect`; `test:unit` extended |
+| `.npmrc` | New. `ignore-scripts=true` so `npm ci` uses `better-sqlite3`'s prebuilt binaries (see section 5) |
+| `tests/server-meta.test.ts` | Added one test guarding `.npmrc` (the other assertion is unchanged) |
 | `.env.example`, `.gitignore`, `README.md`, `docs/architecture.md`, this file | Updated |
 
 No existing test was deleted, skipped or relaxed. The two edited existing expectations are the default-config assertion (a new field was added to the config object) and the log assertion for the startup tool list (now `get_schedule, get_tasks`, a superset).
@@ -75,11 +77,11 @@ All numbers come from commands run in this session.
 | --- | --- |
 | `npm run typecheck` | Passed |
 | `npm run build` | Passed |
-| `npm run test:unit` (7 files) | 141 passed: time 33, seed data 12, config 15, metadata 1, database 34, calendar repository 21, task repository 25 |
+| `npm run test:unit` (7 files) | 142 passed: time 33, seed data 12, config 15, metadata 2, database 34, calendar repository 21, task repository 25 |
 | `npm run test:db` (3 files) | 80 passed |
 | `npm run test:mcp` | 84 passed: 38 tool tests per protocol era (18 existing for `get_schedule`, 20 new for `get_tasks` and combined use), 5 transport tests, log, shutdown and database-release tests |
 | `npm run test:persistence` | 7 passed: identical data after restart, no growth over four restarts, edits kept and not reseeded, live reads of outside changes, isolated databases, two startup-failure cases |
-| `npm run check` | Passed: typecheck, build, 232 tests in 9 files, 0 failed, 0 skipped |
+| `npm run check` | Passed: typecheck, build, 233 tests in 9 files, 0 failed, 0 skipped |
 | Smoke test against an external server (`MCP_URL`) | 81 passed, 3 skipped by design (log, shutdown and database-release checks need to own the process) |
 | `npm run demo:client` (against a fresh database) | Connected, listed both tools, printed 6 events and the tasks for the day, then the filtered list, the combined summary, the UTC check and two rejected requests |
 | `npm run db:inspect` | Worked while the server ran, after a clean stop, and after the server process was killed; reports a missing file with a clear message and exit code 1 |
@@ -92,13 +94,19 @@ All numbers come from commands run in this session.
 | Mutation check: task deadline upper bound made inclusive | 4 tests failed; reverted |
 | Mutation check: priority tie-break removed | 1 test failed; reverted |
 | Mutation check: seeding changed to `INSERT OR REPLACE` | 5 tests failed; reverted |
-| Tests after reverting all mutations | 232 passed |
+| Tests after reverting all mutations | 232 passed (before the `.npmrc` guard test was added, which makes 233) |
 
-A bug caught during this work: the first `.gitignore` rule for the data directory (`data/`) was unanchored and also ignored `apps/mcp-server/src/data/`, which would have excluded the new repository and seed files from a commit. It is now `/data/`, verified with `git check-ignore`.
+| **Fresh clone** (`git clone`, then plain `npm ci`, then `npm run check`), after the `.npmrc` fix | `npm ci` added 64 packages, 0 vulnerabilities; `npm run check` passed with 233 tests in 9 files |
+| Default-configuration end to end from that clone (no environment overrides) | Server created `./data/planrescue.sqlite` and seeded 6 events and 5 tasks; the demo client read both tools; after a stop and restart it seeded 0 rows and shut down cleanly; `git status` stayed clean (database ignored) |
+
+Two bugs caught during this work:
+
+1. **`npm ci` failed in a fresh clone.** The first Phase 2 commit installed fine with `npm install` in the working directory, but `npm ci` in a fresh clone failed: `better-sqlite3` ships prebuilt binaries and declares `gypfile: false`, yet a lockfile install does not see that flag and runs an implicit `node-gyp rebuild`, which needs a C++ toolchain and a download from nodejs.org (unreachable here, `ENOTFOUND`). It was reproduced in an empty directory independent of this project: `npm install better-sqlite3@13.0.3` works, `npm ci` from the lockfile it generates does not. Fix: a committed `.npmrc` with `ignore-scripts=true`. Only `esbuild` and `fsevents` have install scripts in the lockfile, and `tsx`, `vitest` and `better-sqlite3` were all confirmed to work without them. A test guards the setting. Note that this means no dependency install script runs; if a future dependency needs one, remove the setting and use `npm rebuild <package>`. This was found by verifying from a fresh clone, which is why the check was run that way.
+2. the first `.gitignore` rule for the data directory (`data/`) was unanchored and also ignored `apps/mcp-server/src/data/`, which would have excluded the new repository and seed files from a commit. It is now `/data/`, verified with `git check-ignore`.
 
 ### 6. Known limitations
 
-1. **CI has not run.** The workflow is unchanged (Node 22 and 24). Only Node 22.22.2 on Linux was exercised here, so the `better-sqlite3` prebuilt binary on Node 24, macOS and Windows is unverified.
+1. **CI has not run.** The workflow is unchanged (Node 22 and 24); it uses `npm ci`, which now relies on the `.npmrc` setting. Only Node 22.22.2 on Linux x64 was exercised here, so the bundled `better-sqlite3` binaries for Node 24, macOS, Windows, arm64 and musl Linux are unverified.
 2. **Hang on a pseudo-filesystem path.** `DATABASE_PATH=/proc/nope/db.sqlite` hung in this sandbox. A bare `fs.mkdirSync('/proc/nope', { recursive: true })` hangs the same way without any project code, so it looks like a sandbox quirk, but it was not confirmed on another system, and the server has no timeout around directory creation.
 3. **Crash durability is only lightly tested.** Recovery after a killed process was checked manually once; there is no automated test for it.
 4. **No write path.** Nothing in MCP can create, change or delete events or tasks. The persistence tests simulate edits by writing to the file directly.
