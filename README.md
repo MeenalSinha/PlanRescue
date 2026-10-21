@@ -47,6 +47,8 @@ npm ci                # install exactly what the lockfile pins
 npm run dev:mcp       # start the server; creates and seeds ./data/planrescue.sqlite on first run
 ```
 
+No compiler is needed: `better-sqlite3` ships prebuilt binaries for Linux, macOS and Windows (x64 and arm64). The committed `.npmrc` sets `ignore-scripts=true` so that `npm ci` uses them. Without it, `npm ci` tries to compile the module from source, which needs a C++ toolchain and a download from nodejs.org (see `docs/implementation-report.md`).
+
 In a second terminal:
 
 ```bash
@@ -261,7 +263,7 @@ planrescue/
 │   ├── architecture.md
 │   └── implementation-report.md         Versions, protocol evidence, test results, known issues
 ├── .github/workflows/ci.yml
-├── .env.example  .gitignore  .nvmrc
+├── .env.example  .gitignore  .npmrc  .nvmrc
 ├── package.json  package-lock.json
 ├── tsconfig.json  tsconfig.build.json  vitest.config.ts
 ├── README.md
