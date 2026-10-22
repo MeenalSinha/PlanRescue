@@ -279,9 +279,15 @@ describe.each(ERAS)('MCP client over Streamable HTTP: $label', ({ options, era, 
   const DAY = { startDeadline: '2026-10-22T00:00:00+05:30', endDeadline: '2026-10-23T00:00:00+05:30' };
   const titles = (out: TasksOutput): string[] => out.tasks.map((t) => t.title);
 
-  it('lists both get_schedule and get_tasks through tools/list', async () => {
+  it('lists get_schedule and get_tasks (Phase 2) together with the three Phase 3 recovery tools through tools/list', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(['get_schedule', 'get_tasks']);
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'analyze_conflicts',
+      'get_schedule',
+      'get_tasks',
+      'propose_recovery_plan',
+      'validate_recovery_plan',
+    ]);
   });
 
   it('discovers get_tasks with optional filters, an output schema and read-only annotations', async () => {
@@ -535,13 +541,233 @@ describe('transport hardening and operational endpoints', () => {
   });
 });
 
+describe('Phase 3: recovery tools through the real MCP protocol', () => {
+  let client: Client;
+
+  const INTERVAL = { startTime: '2026-10-22T08:00:00+05:30', endTime: '2026-10-22T20:00:00+05:30' };
+  const OVERRUN = { type: 'event_overrun', eventId: 'evt-001', overrunMinutes: 40 };
+
+  interface Conflict { issueId: string; affectedEventIds: string[]; introducedByDisruption: boolean; resolvable: boolean; severity: string }
+  interface Finding { taskId: string; status: string; origin: string }
+  interface Analysis {
+    eventsExamined: number;
+    existingConflicts: Conflict[];
+    newConflicts: Conflict[];
+    affectedEvents: { eventId: string; impact: string }[];
+    protectedConstraints: { eventId: string; reasons: string[] }[];
+    taskAssessments: Finding[];
+    assessment: { status: string };
+  }
+  interface Change { eventId: string; proposedStartTime: string; proposedEndTime: string; originalStartTime: string; originalEndTime: string }
+  interface Candidate {
+    planId: string;
+    strategy: string;
+    changes: Change[];
+    unchangedProtectedEvents: { eventId: string }[];
+    taskAssessments: Finding[];
+    validation: { isValid: boolean; violations: unknown[] };
+    score: { rank: number; hardViolations: number };
+  }
+  interface PlanSet { outcome: string; candidates: Candidate[]; infeasibility: { reasons: { code: string }[] } | null; discardedStrategies: unknown[] }
+  interface Validation { planId?: string; isValid: boolean; violations: { check: string; eventId: string | null }[]; warnings: { message: string }[]; checks: { name: string; passed: boolean }[]; taskAssessments: Finding[] }
+
+  /** Raw SQLite rows, read directly (read-only) to prove the planning tools never write. */
+  function snapshot(): string {
+    const db = new Database(database.path, { readonly: true });
+    try {
+      return JSON.stringify({
+        events: db.prepare('SELECT * FROM calendar_events ORDER BY id').all(),
+        tasks: db.prepare('SELECT * FROM tasks ORDER BY id').all(),
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  async function call<T>(name: string, args: Record<string, unknown>): Promise<T> {
+    const result = await client.callTool({ name, arguments: args });
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy();
+    expect(result.structuredContent).toBeDefined();
+    const first = result.content[0];
+    expect(first?.type === 'text' && first.text.length > 20, 'a readable text summary accompanies the structured result').toBe(true);
+    return result.structuredContent as unknown as T;
+  }
+  async function failing(name: string, args: Record<string, unknown>): Promise<string> {
+    const result = await client.callTool({ name, arguments: args });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    const first = result.content[0];
+    return first?.type === 'text' ? first.text : '';
+  }
+
+  beforeAll(async () => {
+    client = new Client({ name: 'planrescue-recovery-e2e', version: '0.1.0' }, {});
+    await client.connect(new StreamableHTTPClientTransport(new URL(server.url)));
+  });
+  afterAll(async () => {
+    await client?.close();
+  });
+
+  it('discovers the three recovery tools with validated schemas, descriptions and read-only annotations', async () => {
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((t) => [t.name, t]));
+    for (const name of ['analyze_conflicts', 'propose_recovery_plan', 'validate_recovery_plan']) {
+      const tool = byName.get(name);
+      expect(tool, `${name} must be registered`).toBeDefined();
+      expect(tool!.description!.length).toBeGreaterThan(200);
+      expect(tool!.outputSchema).toBeDefined();
+      expect(tool!.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
+    }
+    expect([...(byName.get('analyze_conflicts')!.inputSchema.required ?? [])].sort()).toEqual(['endTime', 'startTime']);
+    expect([...(byName.get('propose_recovery_plan')!.inputSchema.required ?? [])].sort()).toEqual(['disruption', 'endTime', 'startTime']);
+    expect([...(byName.get('validate_recovery_plan')!.inputSchema.required ?? [])].sort()).toEqual(['changes', 'disruption', 'endTime', 'startTime']);
+    expect(JSON.stringify(byName.get('propose_recovery_plan')!.inputSchema)).toMatch(/"maximum":240/);
+  });
+
+  it('runs the full sequence: read, analyse, propose, validate, reject a bad plan, and leave SQLite unchanged', async () => {
+    const before = snapshot();
+
+    // 3-4. The existing read tools still work and return the same seeded records.
+    const schedule = await call<{ count: number; events: { id: string }[] }>('get_schedule', INTERVAL);
+    expect(schedule.count).toBe(6);
+    const tasks = await call<{ count: number }>('get_tasks', {});
+    expect(tasks.count).toBe(5);
+
+    // 5. Baseline analysis: the stored day is clean.
+    const baseline = await call<Analysis>('analyze_conflicts', INTERVAL);
+    expect(baseline.eventsExamined).toBe(6);
+    expect(baseline.existingConflicts).toEqual([]);
+    expect(baseline.newConflicts).toEqual([]);
+    expect(baseline.assessment.status).toBe('no_conflicts');
+
+    // 6. The 40-minute overrun creates the lunch conflict and cascades.
+    const analysis = await call<Analysis>('analyze_conflicts', { ...INTERVAL, disruption: OVERRUN });
+    expect(analysis.newConflicts).toHaveLength(1);
+    expect(analysis.newConflicts[0]).toMatchObject({ affectedEventIds: ['evt-001', 'evt-002'], introducedByDisruption: true, resolvable: true });
+    expect(analysis.affectedEvents.map((e) => [e.eventId, e.impact])).toEqual([
+      ['evt-002', 'direct_overlap'],
+      ['evt-003', 'cascade'],
+      ['evt-004', 'cascade'],
+    ]);
+    expect(analysis.protectedConstraints.map((p) => p.eventId)).toEqual(['evt-001', 'evt-005', 'evt-006']);
+    expect(analysis.taskAssessments.find((t) => t.taskId === 'task-001')).toMatchObject({ status: 'feasible' });
+    expect(analysis.taskAssessments.find((t) => t.taskId === 'task-004')).toBeUndefined(); // completed
+
+    // 7-8. Propose, then choose a candidate the tool marked as independently validated.
+    const proposal = await call<PlanSet>('propose_recovery_plan', { ...INTERVAL, disruption: OVERRUN });
+    expect(proposal.outcome).toBe('plans_found');
+    const candidate = proposal.candidates.find((c) => c.validation.isValid && c.score.hardViolations === 0);
+    expect(candidate, 'at least one independently validated candidate').toBeDefined();
+    expect(candidate!.changes.map((c) => c.eventId)).toEqual(['evt-002', 'evt-003', 'evt-004']);
+    expect(candidate!.changes.map((c) => c.eventId)).not.toContain('evt-005'); // doctor's appointment untouched
+    expect(candidate!.unchangedProtectedEvents.map((e) => e.eventId)).toEqual(['evt-001', 'evt-005', 'evt-006']);
+
+    // 9-10. Pass the candidate's actual data, unchanged, to the validator: it confirms independently.
+    const confirmed = await call<Validation>('validate_recovery_plan', candidate as unknown as Record<string, unknown>);
+    expect(confirmed.isValid).toBe(true);
+    expect(confirmed.planId).toBe(candidate!.planId);
+    expect(confirmed.violations).toEqual([]);
+    expect(confirmed.checks.filter((c) => c.passed)).toHaveLength(10);
+    expect(confirmed.taskAssessments.map((t) => t.status)).toEqual(candidate!.taskAssessments.map((t) => t.status));
+
+    // 11. Intentionally invalid candidates, including one that falsely claims to be valid.
+    const withDoctorMoved = structuredClone(candidate) as unknown as Record<string, unknown> & { changes: Change[]; validation: { isValid: boolean } };
+    withDoctorMoved.changes.push({
+      eventId: 'evt-005',
+      originalStartTime: '2026-10-22T16:30:00+05:30',
+      originalEndTime: '2026-10-22T17:30:00+05:30',
+      proposedStartTime: '2026-10-22T17:00:00+05:30',
+      proposedEndTime: '2026-10-22T18:00:00+05:30',
+    });
+    withDoctorMoved.validation = { isValid: true }; // the lie
+    const rejected = await call<Validation>('validate_recovery_plan', withDoctorMoved);
+    expect(rejected.isValid).toBe(false);
+    expect(rejected.violations.map((v) => v.check)).toEqual(expect.arrayContaining(['immovable_events', 'critical_events']));
+    expect(rejected.warnings.some((w) => /claimed validation\.isValid=true/.test(w.message))).toBe(true);
+
+    const overlapping = structuredClone(candidate) as unknown as { changes: Change[] };
+    overlapping.changes[0]!.proposedStartTime = '2026-10-22T12:45:00+05:30'; // back inside the overrun
+    overlapping.changes[0]!.proposedEndTime = '2026-10-22T13:30:00+05:30';
+    const overlap = await call<Validation>('validate_recovery_plan', overlapping as unknown as Record<string, unknown>);
+    expect(overlap.isValid).toBe(false);
+    expect(overlap.violations.map((v) => v.check)).toContain('no_overlaps');
+
+    const shortened = structuredClone(candidate) as unknown as { changes: Change[] };
+    shortened.changes[0]!.proposedEndTime = '2026-10-22T13:30:00+05:30'; // lunch 13:10-13:30
+    expect((await call<Validation>('validate_recovery_plan', shortened as unknown as Record<string, unknown>)).violations.map((v) => v.check)).toContain('duration_preservation');
+
+    const ghost = structuredClone(candidate) as unknown as { changes: Change[] };
+    ghost.changes[0]!.eventId = 'evt-999';
+    expect((await call<Validation>('validate_recovery_plan', ghost as unknown as Record<string, unknown>)).violations.map((v) => v.check)).toContain('event_existence');
+
+    // 12. Nothing above wrote to the database.
+    expect(snapshot()).toBe(before);
+    const again = await call<{ events: { id: string; startTime: string; endTime: string }[] }>('get_schedule', INTERVAL);
+    expect(again.events.find((e) => e.id === 'evt-001')!.endTime).toBe('2026-10-22T12:30:00+05:30'); // overrun was hypothetical
+    expect(again.events.find((e) => e.id === 'evt-002')!.startTime).toBe('2026-10-22T12:30:00+05:30');
+  });
+
+  it('reports infeasibility explicitly when a fixed commitment is in the way, and when the caller protects too much', async () => {
+    const intoDoctor = await call<PlanSet>('propose_recovery_plan', { ...INTERVAL, disruption: { type: 'event_overrun', eventId: 'evt-004', overrunMinutes: 120 } });
+    expect(intoDoctor.outcome).toBe('infeasible');
+    expect(intoDoctor.candidates).toEqual([]);
+    expect(intoDoctor.infeasibility!.reasons[0]!.code).toBe('fixed_conflict');
+
+    const protectedLunch = await call<PlanSet>('propose_recovery_plan', { ...INTERVAL, disruption: OVERRUN, protectedEventIds: ['evt-002'] });
+    expect(protectedLunch.outcome).toBe('infeasible');
+    expect(protectedLunch.candidates).toEqual([]);
+
+    const analysis = await call<Analysis>('analyze_conflicts', { ...INTERVAL, disruption: { type: 'event_overrun', eventId: 'evt-004', overrunMinutes: 120 } });
+    expect(analysis.assessment.status).toBe('conflicts_unresolvable');
+    expect(analysis.newConflicts.some((c) => c.severity === 'critical' && !c.resolvable)).toBe(true);
+  });
+
+  it('returns the same proposal every time for the same input', async () => {
+    const a = await call<PlanSet>('propose_recovery_plan', { ...INTERVAL, disruption: OVERRUN });
+    const b = await call<PlanSet>('propose_recovery_plan', { ...INTERVAL, disruption: OVERRUN });
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it('rejects malformed input with clear tool errors', async () => {
+    expect(await failing('analyze_conflicts', { startTime: '2026-10-22T08:00:00', endTime: INTERVAL.endTime })).toMatch(/explicit UTC offset/);
+    expect(await failing('analyze_conflicts', { startTime: INTERVAL.endTime, endTime: INTERVAL.startTime })).toMatch(/strictly after/);
+    expect(await failing('propose_recovery_plan', { ...INTERVAL, disruption: { ...OVERRUN, overrunMinutes: 241 } })).toMatch(/overrunMinutes/);
+    expect(await failing('propose_recovery_plan', { ...INTERVAL, disruption: { ...OVERRUN, overrunMinutes: 0 } })).toMatch(/overrunMinutes/);
+    expect(await failing('propose_recovery_plan', { ...INTERVAL, disruption: { ...OVERRUN, type: 'cancellation' } })).toMatch(/disruption/);
+    expect(await failing('propose_recovery_plan', { ...INTERVAL })).toMatch(/disruption/);
+    expect(await failing('analyze_conflicts', { ...INTERVAL, disruption: { ...OVERRUN, eventId: 'evt-404' } })).toMatch(/evt-404.*not found/);
+    expect(await failing('analyze_conflicts', { startTime: '2026-01-01T00:00:00+05:30', endTime: '2026-12-31T00:00:00+05:30' })).toMatch(/at most 14 days/);
+    expect(
+      await failing('validate_recovery_plan', {
+        ...INTERVAL,
+        disruption: OVERRUN,
+        changes: [{ eventId: 'evt-002', proposedStartTime: '2026-10-22T13:10:00', proposedEndTime: '2026-10-22T13:55:00+05:30' }],
+      }),
+    ).toMatch(/proposedStartTime/);
+    expect(await failing('validate_recovery_plan', { ...INTERVAL, disruption: OVERRUN })).toMatch(/changes/);
+  });
+
+  it('keeps serving the earlier tools correctly after recovery calls, including concurrent ones', async () => {
+    const results = await Promise.all([
+      call<{ count: number }>('get_schedule', INTERVAL),
+      call<PlanSet>('propose_recovery_plan', { ...INTERVAL, disruption: OVERRUN }),
+      call<Analysis>('analyze_conflicts', { ...INTERVAL, disruption: OVERRUN }),
+      call<{ count: number }>('get_tasks', {}),
+    ]);
+    expect((results[0] as { count: number }).count).toBe(6);
+    expect((results[1] as PlanSet).outcome).toBe('plans_found');
+    expect((results[2] as Analysis).newConflicts).toHaveLength(1);
+    expect((results[3] as { count: number }).count).toBe(5);
+  });
+});
+
 describe('server logs reflect real activity', () => {
   it('recorded the tool calls, matches, and rejections that the client just made', (ctx) => {
     if (server.external) ctx.skip();
     const logs = server.logs();
     expect(logs).toContain('Transport: Streamable HTTP');
     expect(logs).toContain(`Endpoint: ${server.url}`);
-    expect(logs).toContain('Tool registered: get_schedule, get_tasks');
+    expect(logs).toContain('Tool registered: get_schedule, get_tasks, analyze_conflicts, propose_recovery_plan, validate_recovery_plan');
     expect(logs).toContain(`Data source: SQLite ${server.databasePath} (schema v1, 6 events, 5 tasks)`);
     expect(logs).toContain('Database seeding: inserted 6 events, 5 tasks');
     expect(logs).toContain('Tool: get_schedule | Requested interval: [2026-10-22T12:00:00+05:30, 2026-10-22T18:00:00+05:30)');
@@ -558,6 +784,15 @@ describe('server logs reflect real activity', () => {
     expect(logs).toContain('Tool: get_tasks | Matching tasks: 0 | Status: success');
     expect(logs).toContain('Tool: get_tasks | Status: rejected | Reason: endDeadline must be strictly after startDeadline');
     expect(logs).toContain('Tool: get_tasks | Status: rejected | Invalid input | status');
+    expect(logs).toContain('Tool: analyze_conflicts | Events: 6 | Existing conflicts: 0 | New conflicts: 0 | Status: success');
+    expect(logs).toContain('Tool: analyze_conflicts | Events: 6 | Existing conflicts: 0 | New conflicts: 1 | Status: success');
+    expect(logs).toContain('Tool: propose_recovery_plan | Outcome: plans_found | Validated candidates: 1 | Status: success');
+    expect(logs).toContain('Tool: propose_recovery_plan | Outcome: infeasible | Validated candidates: 0 | Status: success');
+    expect(logs).toContain('Tool: validate_recovery_plan | Plan:');
+    expect(logs).toMatch(/Tool: validate_recovery_plan \| Plan: plan-[0-9a-f]{12} \| Valid: true \| Violations: 0/);
+    expect(logs).toMatch(/Tool: validate_recovery_plan \| Plan: plan-[0-9a-f]{12} \| Valid: false/);
+    expect(logs).toContain('Status: rejected | Reason: Disruption event "evt-404" was not found');
+    expect(logs).toContain('Tool: propose_recovery_plan | Status: rejected | Invalid input | disruption.overrunMinutes');
     expect(logs).not.toMatch(/Status: failure/);
     expect(logs).not.toMatch(/Uncaught exception|Unhandled rejection/);
   });

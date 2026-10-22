@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 
 export const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;
+export type Priority = (typeof PRIORITIES)[number];
 export const CATEGORIES = ['meeting', 'focus', 'medical', 'deadline_work', 'personal'] as const;
 export const TASK_STATUSES = ['pending', 'in_progress', 'completed'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];

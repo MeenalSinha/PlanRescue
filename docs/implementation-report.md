@@ -1,6 +1,147 @@
 # Implementation report
 
-Two milestones are recorded here, newest first. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept below it as written at that time; where Phase 2 changed something (test totals, in-memory data), the Phase 2 section is authoritative.
+Three milestones are recorded here, newest first. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+
+## Phase 3: Recovery Engine (analyze, propose, validate)
+
+Status: implemented and verified in this environment (Linux, Node 22.22.2, npm 10.9.7) for the scope below. Not implemented, by design: approval, applying a plan, any write to the calendar, LLM or agent, UI, any disruption other than `event_overrun`.
+
+### 1. Pre-flight audit (Phase 0, 1 and 2), run before any Phase 3 code
+
+Every item was checked by running it, not by reading the source or README.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Clean install | `npm ci` | pass (64 packages, 0 vulnerabilities; `better-sqlite3` loaded from its prebuilt binary) |
+| Types | `npm run typecheck` | pass |
+| Build | `npm run build` | pass |
+| Unit | `npm run test:unit` | 142 passed (7 files) |
+| Database | `npm run test:db` | 80 passed (3 files) |
+| MCP | `npm run test:mcp` | 84 passed (1 file) |
+| Persistence | `npm run test:persistence` | 7 passed (1 file) |
+| Full gate | `npm run check` | exit 0, 233 passed (9 files) |
+| Demo client against a live server | `npm run demo:client` with `MCP_URL` | pass: negotiated MCP 2026-07-28, both tools returned real data, invalid requests rejected with clear errors |
+| Database inspector | `npm run db:inspect` | pass: schema v1, WAL, 6 events and 5 tasks |
+| Graceful shutdown | SIGTERM to the built server | exit 0; "Received SIGTERM", "Database closed", "Shutdown complete" in that order |
+| Committed junk | `git ls-files` | no database files, no `.env`; working tree clean |
+
+Runtime and configuration: Node 22.22.2 satisfies `engines` (>=22.12.0); `.npmrc` keeps `ignore-scripts=true`. The seeded times match the prompt's description (Team Meeting 11:30-12:30, Lunch 12:30-13:15, Project Review 13:30-14:30, Focus Work 14:30-16:00, Doctor's Appointment 16:30-17:30, Project Deadline Work 18:00-20:00 IST). Data-model facts the engine relies on: Team Meeting is `high`, `movable: false`; Doctor's Appointment is `critical`, `movable: false`; Project Deadline Work is `critical`, `movable: true`.
+
+**Defects found in Phases 0 to 2: none.** No repair was needed, so no earlier-phase code was changed to make a check pass. Two environmental notes, neither a defect: the verification shell is `/bin/sh`, which lacks `${PIPESTATUS}`, so exit codes were captured under `bash`; and a background server did not survive the end of the tool call that started it, so the demo and shutdown checks were each done within one command. Not tested here: Node 24, which CI also runs.
+
+### 2. Files created or modified
+
+Created:
+
+| File | Purpose |
+| --- | --- |
+| `recovery/types.ts` | Zod schemas and inferred types for disruption, conflicts, task findings, plans, validation results; limits |
+| `recovery/schedule.ts` | Slots, deterministic ordering, `fixedReasons`, `findOverlaps`, `checkPlanningWindow`, `buildPlanningContext` |
+| `recovery/placement.ts` | Deterministic greedy placement of flexible events |
+| `recovery/analyzeConflicts.ts` | Conflict and consequence analysis |
+| `recovery/generateRecoveryPlans.ts` | Three strategies, change building, explanations, infeasibility reporting, plan IDs |
+| `recovery/validateRecoveryPlan.ts` | Independent validator with ten named checks |
+| `recovery/taskCapacity.ts` | Aggregate deadline-capacity assessment and finding attribution |
+| `recovery/scoring.ts` | Scoring formula and ranking |
+| `tools/analyzeConflicts.ts`, `tools/proposeRecoveryPlan.ts`, `tools/validateRecoveryPlan.ts` | The three MCP tools |
+| `tools/recoveryShared.ts` | Repository access through the existing interfaces, error mapping, read-only annotations |
+| `tests/recovery-time.test.ts`, `recovery-task-capacity.test.ts`, `recovery-analyze.test.ts`, `recovery-generate.test.ts`, `recovery-validate.test.ts`, `tests/helpers/recoveryFixtures.ts` | Engine unit tests and synthetic fixtures |
+
+(All source paths are under `apps/mcp-server/src/`.)
+
+Modified:
+
+| File | Change |
+| --- | --- |
+| `server.ts` | Registers the three new tools; instructions describe the Recovery Engine accurately |
+| `lib/time.ts` | Added `offsetMinutesOf`, `isoAtOffsetOf`, `clockTime`. Existing parser, overlap rule and validators untouched |
+| `lib/errors.ts` | Added `RecoveryInputError` |
+| `types.ts` | Added a `Priority` type alias (purely additive) |
+| `tests/mcp-smoke.test.ts` | New Phase 3 end-to-end block (6 tests); log assertions for the new tools. **Two existing assertions were changed, for a legitimate reason:** the `tools/list` equality now expects five tools instead of two (same style, same sorting), and the `Tool registered:` log assertion now expects the full five-tool line (the old string was a prefix of it and would still have passed). No assertion was deleted, skipped or weakened |
+| `package.json` | `test:unit` includes the five new test files; new `test:recovery`; description |
+| `scripts/demo-client.ts` | Adds the Phase 3 scenario (analyse, propose, validate, validate a tampered plan), MCP only |
+| `README.md`, `docs/architecture.md`, this report | Phase 3 documentation |
+
+### 3. Recovery Engine design
+
+**Conflict detection.** Baseline and projected schedules are arrays of slots in epoch milliseconds; overlap uses the project's existing half-open rule. A pair overlapping in the stored schedule is an existing conflict; a pair that overlaps only in the projected schedule is new. Severity is the higher priority of the two events. `resolvable` is true when at least one event of the pair can move and the minimal placement did not fail for it. Deadline problems become conflicts only when the capacity assessment says `at_risk` or `infeasible`.
+
+**Hard constraints.** Immovable, critical and user-protected events never move; the overrunning event is observed, not moved; durations are preserved; no overlaps; moves stay within the planning interval; no plan-introduced deadline infeasibility.
+
+**Candidate generation.** Fixed events block time. Flexible events are processed in a strategy-defined order; an event overlapping nothing stays; otherwise it takes the earliest start at or after its original start that clears all fixed and already-placed events (plus a buffer for `buffered_transitions`) and ends within the interval. Strategies: `minimal_disruption` (chronological), `buffered_transitions` (chronological, 10 then 5 minute buffers), `priority_first` (priority order). Overlapping fixed events short-circuit to an explicit infeasibility result. Every candidate goes through `validateRecoveryPlan`; only accepted ones are returned; duplicates and failures are listed in `discardedStrategies`.
+
+**Ranking.** Penalty score, lower is better:
+
+`total = 100 × changedEvents + Σ(shiftMinutes × priorityWeight[critical 8, high 4, medium 2, low 1]) + Σ(shiftMinutes of moved focus events) + transitionWeight × tightTransitions + 40 × atRiskTasks + 200 × infeasibleTasks`
+
+A tight transition is a pair of neighbouring events less than 10 minutes apart that touches a moved or overrunning event. The weight is 10 by default and 40 with `optimizeFor: "transition_time"`. Order: hard-violation count, total, fewer changes, strategy order, plan ID. This is a heuristic; no optimality is claimed.
+
+**Task-capacity assumptions.** Pending and in-progress tasks count at full estimate; completed ones are excluded; free time is unoccupied calendar time from the planning start to the deadline (focus and deadline-work blocks are not capacity); effort is cumulative by deadline, then priority, then id; tasks due after the interval are `not_assessed`; a deadline at or before the planning start is infeasible and excluded from later sums; `at_risk` means a margin of 30 minutes or less; the disrupted schedule is "stored schedule with the overrun's minutes paid in full". No task is ever assigned a slot.
+
+### 4. MCP tools
+
+| Tool | Input | Output (structured, plus a text summary) |
+| --- | --- | --- |
+| `analyze_conflicts` | `startTime`, `endTime` (ISO 8601 with offset; at most 14 days); optional `disruption {type: "event_overrun", eventId, overrunMinutes 1-240}`, `protectedEventIds` (max 100) | `interval`, `disruption`, `eventsExamined`, `tasksExamined`, `existingConflicts`, `newConflicts` (each with `issueId`, `category`, `severity`, `affectedEventIds`, `affectedTaskIds`, `description`, `interval`, `introducedByDisruption`, `resolvable`, `suggestedNextStep`), `affectedEvents`, `protectedConstraints`, `taskAssessments`, `warnings`, `assessment` |
+| `propose_recovery_plan` | as above with `disruption` required; optional `preferences {optimizeFor}` | `outcome`, `candidates` (each: `planId`, `strategy`, `summary`, interval, `protectedEventIds`, `disruption`, `changes`, `unchangedProtectedEvents`, `taskAssessments`, `explanation`, `score`, `validation`), `discardedStrategies`, `infeasibility`, `rankingFormula`, `warnings`, `summary` |
+| `validate_recovery_plan` | `startTime`, `endTime`, `disruption`, `changes[]` (`eventId`, `proposedStartTime`, `proposedEndTime`, optional claims), optional `protectedEventIds`, `planId`; extra fields ignored, so a whole candidate is accepted unchanged | `planId`, `isValid`, `checks`, `violations`, `warnings`, `taskAssessments`, `summary` |
+
+All three are annotated read-only, idempotent and non-destructive, and log each call (interval, disruption, counts, outcome, duration). Unusable requests (unknown event, inverted or oversized interval, malformed timestamp, overrun outside 1-240) are tool errors; a plan that merely breaks a rule is a normal result with `isValid: false`.
+
+### 5. Demonstration result (actual tool output)
+
+Scenario: `startTime 2026-10-22T08:00:00+05:30`, `endTime 2026-10-22T20:00:00+05:30`, `event_overrun` on `evt-001` (Team Meeting) by 40 minutes, called through the official MCP client against the built server (the output of `npm run demo:client`).
+
+- **Detected conflicts:** 0 existing; 1 new: Team Meeting (11:30-13:10 after the overrun) overlaps Lunch Break (12:30-13:15) for 40 minutes, severity high, resolvable. Affected: Lunch Break (direct overlap), Project Review and Focus Work (cascade).
+- **Protected, not moved:** Team Meeting (immovable, the overrunning event), Doctor's Appointment (immovable, critical), Project Deadline Work (critical).
+- **Outcome `plans_found`, one validated candidate** (`minimal_disruption`, `plan-6bd172b681d2`, score 555, rank 1): Lunch Break 12:30-13:15 to 13:10-13:55 (+40 min); Project Review 13:30-14:30 to 13:55-14:55 (+25); Focus Work 14:30-16:00 to 14:55-16:25 (+25). Doctor's Appointment (16:30) and Project Deadline Work (18:00-20:00) unchanged. Score components: 300 (3 changes) + 190 (priority-weighted delay) + 25 (focus) + 40 (four tight transitions) + 0 (task risk).
+- **Not offered, with reasons:** `buffered_transitions` (Focus Work cannot end inside the interval with 10 or 5 minute buffers) and `priority_first` (Lunch Break cannot be placed after the higher-priority events keep their slots). The schedule has exactly 5 spare minutes before the doctor.
+- **Task assessment** (disrupted schedule): Prepare for project review, feasible (margin 155 min); Review teammate's deliverable, feasible (170 min); Complete project report, feasible (cumulative effort 195 min, margin 50 min); Plan next week's sprint, not assessed (due next day); Draft team meeting agenda excluded (completed). These are capacity estimates; no task has a slot and none is claimed complete.
+- **Independent validation:** the candidate, passed unchanged to `validate_recovery_plan`, returned `isValid: true`, no violations, all ten checks passed. The same plan with the doctor's appointment moved and a false `validation.isValid: true` returned `isValid: false` with violations `immovable_events` and `critical_events` and a warning that the claim was ignored.
+- **Read-only proof:** the end-to-end test snapshots every row of both SQLite tables before and after the whole sequence and asserts they are byte-identical; `get_schedule` afterwards still shows Team Meeting ending 12:30.
+
+Other scenarios checked through MCP: a 120-minute Focus Work overrun runs into the immovable doctor's appointment and returns `infeasible` with a `fixed_conflict` reason and no candidates; protecting Lunch Break in the seed scenario returns `infeasible`.
+
+### 6. Verification results
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` | pass |
+| `npm run build` | pass |
+| `npm run test:unit` | 231 passed (12 files): the original 142 plus 89 Recovery Engine tests |
+| `npm run test:recovery` | 89 passed (5 files) |
+| `npm run test:db` | 80 passed (3 files), unchanged |
+| `npm run test:mcp` | 90 passed (1 file): the original 84 plus 6 Phase 3 end-to-end tests |
+| `npm run test:persistence` | 7 passed (1 file), unchanged |
+| `npm run check` | exit 0: **328 passed, 0 failed, 0 skipped (14 files)** |
+| `npm run demo:client` against a live server | pass, output as above |
+
+Nothing was skipped or could not run. 328 = 233 original + 95 new.
+
+Problems found and fixed during Phase 3, all in new code:
+
+- **Overlap double-counting in deadline attribution.** The first design assessed the disrupted schedule on the union of overlapping events, which counts overlapped minutes once and so understated the cost of the overrun; resolving the overlap could then be blamed on the plan. Fixed by assessing it as "stored schedule with the overrun paid in full" (see assumptions), then re-tested.
+- **Test errors in my own new tests** (one wrong free-minutes figure, one wrong expectation about the order of a fixed-conflict pair, tests that expected a single failed check where the validator correctly also reports the unresolved overlap, and a deadline fixture whose effort left a margin of exactly 0, which is "at risk", not "infeasible"). The code was checked in each case and the tests corrected; no previously existing test was touched.
+
+Test strength was checked by mutation: breaking the validator's immovable check, making it trust `validation.isValid`, letting placement move events earlier, and switching the overlap rule to closed intervals each made the suite fail (the last by an infinite loop, caught with a timeout). The source was restored byte-for-byte after each.
+
+### 7. Known limitations
+
+- Only `event_overrun`, only on a stored event, and the overrunning event is never rescheduled.
+- Events move only later, never earlier; the algorithm is greedy and does not prove the fewest moves or least delay. On the seed day only one candidate survives; on other days up to three can.
+- Task capacity is aggregate. It counts only unoccupied time, so focus and deadline-work blocks add no capacity even though that is where task work will really happen; the estimate errs on the cautious side and can report a deadline as tighter than it is. There is no link between events and tasks, no progress tracking, no availability model (working hours), no travel time, and a task estimate is treated as fully remaining.
+- Only tasks due inside the planning interval are loaded; `startTime` stands in for "now".
+- An event that exists in the database but lies outside the planning interval is reported as "not found", because the repository interface can only query by overlapping range.
+- A move that leaves 5 minutes before the doctor's appointment is valid but tight; the explanation says so, and there is no minimum-buffer hard rule.
+- Bounds: 14-day interval, 500 events, 100 protected IDs, 200 changes per plan.
+- The validator checks a plan's claims about original times and titles, but the `taskAssessments`, `score` and `summary` a submitted plan carries are not verified (they are recomputed, not compared).
+- Not run here: Node 24 (CI matrix), a public deployment, and any real Alexa+ client.
+
+### 8. Readiness for Phase 4
+
+The engine is stable enough to build on: it is pure, deterministic and covered at unit level and through real MCP calls; the validator is independent of the generator; nothing writes to the database. Blockers: none for a UI or agent that consumes these tools. For the approval/apply phase, an apply tool must re-validate against current data immediately before writing (the calendar can change between proposal and approval), and it needs a plan/action-history migration and repository write methods; neither exists yet. The Phase 2 data-model gaps (event-task link, availability model, task earliest-start) remain and will matter as soon as plans start placing task work.
+
+---
 
 ## Phase 2: SQLite data layer and read tools
 

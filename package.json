@@ -2,7 +2,7 @@
   "name": "planrescue",
   "version": "0.1.0",
   "private": true,
-  "description": "PlanRescue: consequence-aware schedule recovery. Phase 0-2: MCP server (Streamable HTTP) with SQLite-backed get_schedule and get_tasks.",
+  "description": "PlanRescue: consequence-aware schedule recovery. Phase 0-3: MCP server (Streamable HTTP) with SQLite-backed get_schedule and get_tasks, and a deterministic Recovery Engine behind analyze_conflicts, propose_recovery_plan and validate_recovery_plan.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -14,13 +14,14 @@
     "start:mcp": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && vitest run",
-    "test:unit": "vitest run tests/time.test.ts tests/seed-data.test.ts tests/config.test.ts tests/server-meta.test.ts tests/database.test.ts tests/sqlite-schedule-repository.test.ts tests/sqlite-task-repository.test.ts",
+    "test:unit": "vitest run tests/time.test.ts tests/seed-data.test.ts tests/config.test.ts tests/server-meta.test.ts tests/database.test.ts tests/sqlite-schedule-repository.test.ts tests/sqlite-task-repository.test.ts tests/recovery-time.test.ts tests/recovery-task-capacity.test.ts tests/recovery-analyze.test.ts tests/recovery-generate.test.ts tests/recovery-validate.test.ts",
     "test:db": "vitest run tests/database.test.ts tests/sqlite-schedule-repository.test.ts tests/sqlite-task-repository.test.ts",
     "test:mcp": "npm run build && vitest run tests/mcp-smoke.test.ts",
     "test:persistence": "npm run build && vitest run tests/persistence.test.ts",
     "demo:client": "tsx scripts/demo-client.ts",
     "db:inspect": "tsx scripts/db-inspect.ts",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "test:recovery": "vitest run tests/recovery-time.test.ts tests/recovery-task-capacity.test.ts tests/recovery-analyze.test.ts tests/recovery-generate.test.ts tests/recovery-validate.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

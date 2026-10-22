@@ -1,6 +1,6 @@
-# PlanRescue architecture (Phase 0 to Phase 2)
+# PlanRescue architecture (Phase 0 to Phase 3)
 
-This document describes what exists today and the seams left for later phases. Anything not listed under "Implemented" is planned and is not in the code. In particular there is no Recovery Engine, no agent or LLM, no approval workflow and no tool that modifies the calendar or tasks.
+This document describes what exists today and the seams left for later phases. Anything not listed under "Implemented" is planned and is not in the code. In particular there is no agent or LLM, no approval workflow and no tool that modifies the calendar or tasks. The Recovery Engine (Phase 3) exists and is read-only: it computes and validates proposals and never applies them.
 
 ## Implemented
 
@@ -88,22 +88,85 @@ Records are validated with the same Zod schemas the API uses, then inserted with
 - **Repository seams.** `ScheduleRepository` and `TaskRepository` are all the tools know about storage.
 - **Configuration through the environment**, validated at startup with names in the error message. No secrets exist in this phase.
 
-## Seams for later phases
+## Phase 3: the Recovery Engine
+
+### Request flow
+
+```
+MCP client
+   │  tools/call analyze_conflicts | propose_recovery_plan | validate_recovery_plan
+   ▼
+tools/*.ts            validate input (Zod), log, map errors to tool errors
+   │  loadPlanningData(): checkPlanningWindow(), then repositories only
+   ▼
+ScheduleRepository.findOverlapping(range)      TaskRepository.findTasks({deadline in [start, end]})
+   │  plain ScheduleEvent[] and Task[]
+   ▼
+recovery/*.ts         pure functions: no SQL, no I/O, no clock, no randomness
+   │  analyzeConflicts()  generateRecoveryPlans()  validateRecoveryPlan()
+   ▼
+structured result (Zod output schema) + readable text, logged with counts and timing
+```
+
+All three tools share the same two repositories (injected through `ServerDeps`, as before) and the same scheduling primitives in `recovery/schedule.ts`: one planning-context builder, one overlap function, one task-capacity function. `server.ts` registers them next to the Phase 2 tools. There is no new HTTP route; everything goes through the MCP endpoint, and all five tools carry read-only annotations.
+
+### The planning context
+
+`buildPlanningContext` validates the interval (explicit offsets, end after start, at most 14 days, at most 500 events), resolves the disruption target, and produces two schedules as arrays of `{id, startMs, endMs}`: the **baseline** (as stored) and the **projected** (target's end extended by the overrun). Both are in-memory copies. Fixed-ness of an event comes from one function, `fixedReasons`: `immovable`, `critical_priority`, `user_protected`, or `disrupted_event`. All comparisons use epoch milliseconds and half-open intervals via the existing `overlaps` helper. Derived timestamps use `isoAtOffsetOf`, which keeps the offset of the event they derive from, so local-time semantics are preserved in output.
+
+### Generation and validation are deliberately separate
+
+```
+generateRecoveryPlans ──► placement.ts (greedy, ordered)  ──► candidate payload
+                                                                   │
+                                                                   ▼
+                                              validateRecoveryPlan(payload, {events, tasks})
+                                                   │ rebuilds the schedule from stored events + disruption + changes
+                                                   ▼
+                                       valid ► returned, ranked    invalid ► discarded with the reason
+```
+
+The generator hands each candidate to `validateRecoveryPlan` as a plain payload, the same entry point an external caller uses through MCP. The validator imports nothing from `placement.ts` and ignores everything in the plan except its interval, disruption, protected IDs and changes. So a defect in the generator surfaces as a rejected candidate instead of a wrong answer, and a hand-built or tampered plan is checked as thoroughly as a generated one. This independence is enforced by tests: a plan carrying `validation.isValid: true` is rejected when it breaks a rule, and a mutation that makes the validator trust that claim fails the suite.
+
+### Task capacity
+
+`taskCapacity.ts` answers one aggregate question: is there enough unoccupied calendar time before each deadline for the cumulative remaining effort due by then? Details and assumptions are in the README. The disrupted schedule is modelled as "stored schedule with the overrun's minutes paid in full" rather than as the union of overlapping events, because a union double-counts overlapped minutes and would make resolving an overlap look like the plan's fault. Findings carry an origin (`pre_existing`, `disruption`, `plan_introduced`); only a plan-introduced infeasibility is a hard violation.
+
+### Design decisions
+
+- **Greedy, forward-only placement.** It is small, deterministic and explainable, and it reports failure instead of relaxing a rule. It does not search exhaustively and makes no optimality claim. Moving events only later keeps explanations simple ("pushed back by the overrun") and avoids pulling events into time the user may not be available.
+- **Strategies are cheap variations, not a solver.** Ordering (chronological or by priority) and buffer size are the only differences; every strategy obeys the same hard constraints.
+- **Scores order valid plans; they never decide validity.** Hard violations are compared first, outside the arithmetic.
+- **Content-derived plan IDs.** Without a plan table (a later phase), the validator takes the plan in the request, and a SHA-256-derived ID makes candidates comparable across calls.
+- **Zod schemas are the single source of truth.** Engine types are inferred from the same schemas the tools advertise, so there are no competing models. `planPayloadSchema` is a loose object, which is why a whole candidate can be submitted unchanged.
+- **Typed input errors.** `RecoveryInputError` (with a code) separates unusable requests from internal failures; tools turn it into a clear tool error and the validator turns it into a failed check.
+
+### Seams left for later phases
 
 | Later phase | Where it plugs in |
 | --- | --- |
-| Conflict detection and recovery planning | Pure modules that consume `ScheduleEvent` (already carries `priority` and `movable`) and `Task` (carries duration, deadline, priority, status). They call the two read repositories; they do not need new storage. |
+| Approval and applying a plan | A new write path on the repositories plus a plan/action-history migration. The validator is already the gate: an apply tool should re-run `validateRecoveryPlan` against current data immediately before writing, since the calendar may have changed since the proposal. |
+| More disruption types | A new member of the disruption schema and a branch in `buildPlanningContext` that produces the projected schedule; placement, validation and scoring already work on slots. |
+| Natural-language agent | Calls the same three tools; it maps a sentence to the structured disruption and explains the returned result. It does not choose times. |
+| Stored plans | A plan table keyed by the existing `planId`; `validate_recovery_plan` could then accept an ID. |
+
+## Seams for later phases (Phase 0 to Phase 2 view, kept for reference)
+
+| Later phase | Where it plugs in |
+| --- | --- |
+| Conflict detection and recovery planning | Implemented in Phase 3 as pure modules over `ScheduleEvent` and `Task`, calling the two read repositories (see above). |
 | Writes (approve, apply, history) | New methods on the repositories and new migrations (append to `MIGRATIONS`, bump nothing else). An action-history table is the natural first addition. |
 | More tools | New files under `tools/`, registered in `server.ts`. |
 | Web UI | `apps/web/`, talking to the same MCP endpoint. |
 | Public deployment | Set `MCP_HOST`/`MCP_ALLOWED_HOSTS`, put TLS in front, and add authentication. The SDK ships bearer-auth and OAuth metadata helpers for this. None of it is configured today. The SQLite file must live on a local disk (WAL does not work over network filesystems) and the process is single-writer. |
 
-## Known limits of this phase
+## Known limits
 
 - No authentication or authorization.
-- Read-only through MCP: nothing can create, edit or delete events or tasks except by editing the database file directly.
+- Read-only through MCP (including the three recovery tools): nothing can create, edit or delete events or tasks except by editing the database file directly.
 - A single user and a single time zone: the calendar and task time zone is a constant (`Asia/Kolkata`) reported in tool output, not stored per user.
 - Events and tasks are not linked. The seeded "Project Deadline Work" event and the "Complete project report" task describe the same effort but nothing in the data says so.
 - Only extended-format ISO 8601 offsets are accepted (`+05:30`, not `+0530`).
 - `get_tasks` has no pagination.
 - Deleted seed rows reappear on the next start.
+- Recovery Engine limits: only the `event_overrun` disruption; moved events only ever move later; task effort is estimated as aggregate capacity (no slots, no progress tracking); no travel time; a 14-day, 500-event bound per request. See the README for the full list.

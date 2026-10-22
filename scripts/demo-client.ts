@@ -75,7 +75,32 @@ async function main(): Promise<void> {
       console.log('\n=== The day at a glance ===');
       console.log(`Calendar: ${events.count} events booking ${bookedMinutes} min.`);
       console.log(`Tasks:    ${open.length} still open needing ~${openMinutes} min of work; last deadline ${latest ?? 'none'}.`);
-      console.log('Recovery planning (a later phase) must fit the open work around the booked events.');
+        console.log('The Recovery Engine below fits the open work around the booked events.');
+    }
+
+    // ---- Phase 3: the Recovery Engine, still only through MCP --------------------------------
+    // "My meeting is running 40 minutes late. Fix my afternoon, but don't move my doctor's
+    // appointment or miss my project deadline." as a structured event_overrun disruption.
+    const interval = { startTime: '2026-10-22T08:00:00+05:30', endTime: '2026-10-22T20:00:00+05:30' };
+    const disruption = { type: 'event_overrun', eventId: 'evt-001', overrunMinutes: 40 };
+
+    console.log('\n=== analyze_conflicts: what does a 40-minute Team Meeting overrun break? (hypothetical; nothing is saved) ===');
+    console.log(textOf(await call('analyze_conflicts', { ...interval, disruption })));
+
+    console.log('\n=== propose_recovery_plan: deterministic, independently validated alternatives ===');
+    const proposal = await call('propose_recovery_plan', { ...interval, disruption });
+    console.log(textOf(proposal));
+
+    const candidates = (proposal.structuredContent as { candidates?: unknown[] } | undefined)?.candidates ?? [];
+    if (candidates.length > 0) {
+      console.log('\n=== validate_recovery_plan: re-verify the top candidate, exactly as returned ===');
+      console.log(textOf(await call('validate_recovery_plan', candidates[0] as Record<string, unknown>)));
+
+      console.log('\n=== validate_recovery_plan: the same plan with the doctor\'s appointment moved (must be rejected) ===');
+      const tampered = structuredClone(candidates[0]) as { changes: Array<Record<string, string>>; validation?: { isValid: boolean } };
+      tampered.changes.push({ eventId: 'evt-005', proposedStartTime: '2026-10-22T17:00:00+05:30', proposedEndTime: '2026-10-22T18:00:00+05:30' });
+      tampered.validation = { isValid: true }; // a false claim the validator does not trust
+      console.log(textOf(await call('validate_recovery_plan', tampered as unknown as Record<string, unknown>)));
     }
 
     console.log('\nSame afternoon interval expressed in UTC (06:30Z to 12:30Z) returns the same events:');
