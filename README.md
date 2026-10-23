@@ -6,7 +6,7 @@ PlanRescue is a consequence-aware schedule recovery agent. When a meeting runs l
 
 This repository is the submission for the **Amazon Developer Hackathon 2026, Alexa+ track**. That track requires a genuine MCP server over the Streamable HTTP transport, so the first thing built here is exactly that: a real MCP server, exercised by a real MCP client.
 
-## Current scope (Phase 0 to Phase 6)
+## Current scope (Phase 0 to Phase 7)
 
 Implemented and verified:
 
@@ -28,8 +28,13 @@ Implemented and verified:
 - **A deterministic Recovery Engine (Phase 3)** behind plain TypeScript logic (no LLM, no external API), and re-validates every candidate with an independent validator.
 - **A web interface (Phase 4 & Phase 6)** in `apps/web`: Next.js web application offering visual schedule comparison, independent validation, explicit approval & rejection actions, a confirmation modal for atomic plan application, and an action history timeline.
 - **AI Agent Integration & Natural-Language Orchestration (Phase 5)**: Bounded, tool-using AI agent that accepts free-form natural-language disruption requests, grounds them against real calendar events and tasks retrieved through MCP, extracts structured intent with strict Zod validation, asks for clarification when ambiguous or incomplete, orchestrates read-only MCP tools, and produces grounded explanations. Write-capable tools are never exposed autonomously to the LLM.
-- **Safety & Atomic Execution**: Generating or validating a plan NEVER alters calendar events. Only an explicit user approval followed by a separate user confirmation on the frontend invokes `apply_approved_plan`, which atomically updates event times in a SQLite transaction and logs an immutable audit trail entry.
-- Comprehensive test coverage across backend, persistence, Recovery Engine, Next.js web application, agent intent extraction, agent security guards, agent orchestration, Phase 6 migration, Phase 6 lifecycle MCP tools, and real MCP integration over Streamable HTTP (450 total tests).
+- **Safety & Atomic Execution**: Generating or validating a plan NEVER alters calendar events. Only an explicit user approval followed by a separate user confirmation on the frontend invokes `apply_approved_plan`, which atomically updates event times in a single SQLite transaction and logs an immutable audit trail entry.
+- **Phase 7 Hardening & Reliability**:
+  - Atomic transaction rollback verified under simulated mid-transaction failures (ensuring zero partial calendar updates, status preserved as approved, and failure audit logged).
+  - Comprehensive stale-plan detection across both calendar event mutations and task mutations.
+  - Concurrency & idempotency hardening preventing race conditions between racing apply/reject operations.
+  - Full release smoke test executing the complete 19-step lifecycle end-to-end against real SQLite and MCP server.
+  - 463 tests across 30 test suites passing 100%.
 
 Planned, not implemented:
 - Disruption types other than `event_overrun` (cancellations, new urgent tasks, travel delays)
@@ -99,7 +104,10 @@ On every later start the last line reads `inserted 0 events, 0 tasks`.
 | `npm run test:db` | Just the database and repository tests (initialization, seeding, calendar and task repositories) |
 | `npm run test:mcp` | Build, then run the end-to-end MCP smoke test |
 | `npm run test:persistence` | Build, then run the stop-and-restart persistence test |
-| `npm test` | Build, then run every test |
+| `npm run test:lifecycle` | Build, then run Phase 6 lifecycle MCP tool tests |
+| `npm run test:hardening` | Build, then run Phase 7 transaction atomicity, stale detection, and concurrency hardening tests |
+| `npm run test:smoke` | Build, then run Phase 7 comprehensive release smoke test end-to-end |
+| `npm test` | Build, then run every backend test |
 | `npm run check` | Backend typecheck and tests, then web typecheck, build and tests; the same gate CI runs |
 | `npm run demo:client` | Demo MCP client against a running server (`MCP_URL` overrides the target) |
 | `npm run db:inspect` | Print schema version, row counts and rows of the database, read-only |

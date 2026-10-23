@@ -11,6 +11,7 @@ import {
   type RecoveryPlanRepository,
   type ActionHistoryRepository,
   type EventChangeUpdate,
+  type SavedRecoveryPlan,
 } from '../types.js';
 import type { Logger } from '../logger.js';
 import { failureResult, loadPlanningData, textError } from './recoveryShared.js';
@@ -164,12 +165,41 @@ export function registerApplyApprovedPlanTool(server: McpServer, deps: ApplyAppr
           proposedEndTime: c.proposedEndTime,
         }));
 
-        // Execute atomic calendar changes
+        // Execute atomic calendar changes & plan status update
+        let updated: SavedRecoveryPlan;
+        const historyDetailsJson = JSON.stringify({
+          changes: candidate.changes.map((c) => ({
+            eventId: c.eventId,
+            title: c.title,
+            from: `${c.originalStartTime} - ${c.originalEndTime}`,
+            to: `${c.proposedStartTime} - ${c.proposedEndTime}`,
+          })),
+        });
+
         try {
-          if (!repository.applyEventChanges) {
-            throw new Error('Repository does not support applying event changes.');
+          if (recoveryPlanRepository.applyApprovedPlanAtomically) {
+            updated = await recoveryPlanRepository.applyApprovedPlanAtomically({
+              planId,
+              actor,
+              updates,
+              historyDetailsJson,
+            });
+          } else {
+            if (!repository.applyEventChanges) {
+              throw new Error('Repository does not support applying event changes.');
+            }
+            await repository.applyEventChanges(updates);
+            updated = await recoveryPlanRepository.updatePlanStatus(planId, 'applied', {
+              expectedStatus: 'approved',
+            });
+            await actionHistoryRepository.recordAction({
+              id: randomUUID(),
+              recoveryPlanId: planId,
+              actionType: 'plan_applied',
+              actor,
+              detailsJson: historyDetailsJson,
+            });
           }
-          await repository.applyEventChanges(updates);
         } catch (error) {
           logger.error(`Tool: ${APPLY_APPROVED_PLAN_TOOL} | Failed applying event changes: ${String(error)}`);
           await actionHistoryRepository.recordAction({
@@ -181,27 +211,6 @@ export function registerApplyApprovedPlanTool(server: McpServer, deps: ApplyAppr
           });
           return textError(`Failed to apply schedule updates: ${error instanceof Error ? error.message : String(error)}`);
         }
-
-        // Update plan status to applied
-        const updated = await recoveryPlanRepository.updatePlanStatus(planId, 'applied', {
-          expectedStatus: 'approved',
-        });
-
-        // Record successful application in action history
-        await actionHistoryRepository.recordAction({
-          id: randomUUID(),
-          recoveryPlanId: planId,
-          actionType: 'plan_applied',
-          actor,
-          detailsJson: JSON.stringify({
-            changes: candidate.changes.map((c) => ({
-              eventId: c.eventId,
-              title: c.title,
-              from: `${c.originalStartTime} - ${c.originalEndTime}`,
-              to: `${c.proposedStartTime} - ${c.proposedEndTime}`,
-            })),
-          }),
-        });
 
         logger.info(
           `Tool: ${APPLY_APPROVED_PLAN_TOOL} | Plan ${planId} successfully applied | ${(performance.now() - started).toFixed(1)}ms`,

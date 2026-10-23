@@ -153,6 +153,13 @@ export interface RecoveryPlanQuery {
   limit?: number;
 }
 
+export interface ApplyApprovedPlanParams {
+  planId: string;
+  actor: string;
+  updates: EventChangeUpdate[];
+  historyDetailsJson: string;
+}
+
 export interface RecoveryPlanRepository {
   savePlan(plan: NewRecoveryPlan): Promise<SavedRecoveryPlan>;
   getPlan(id: string): Promise<SavedRecoveryPlan | null>;
@@ -167,6 +174,7 @@ export interface RecoveryPlanRepository {
       appliedAt?: string;
     },
   ): Promise<SavedRecoveryPlan>;
+  applyApprovedPlanAtomically?(params: ApplyApprovedPlanParams): Promise<SavedRecoveryPlan>;
 }
 
 export interface ActionHistoryEntry {

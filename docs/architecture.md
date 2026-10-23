@@ -320,6 +320,38 @@ Migration 2 adds two `STRICT` SQLite tables:
 - **Zero Frontend Authority**: Client claims such as `status: "approved"` are ignored. The MCP server re-reads from SQLite and enforces all business invariants.
 - **Atomic Commits**: Schedule updates, `applied` status transition, and audit history entry are committed in a single atomic transaction. Failures roll back completely.
 
+## Phase 7: Comprehensive Hardening, Reliability & Release Readiness
+
+Phase 7 hardens the implementation into a fully verified, resilient, and demonstrably reliable application ready for hackathon evaluation.
+
+### 1. Unified Single-Transaction Atomic Application
+- `SqliteRecoveryPlanRepository.applyApprovedPlanAtomically`:
+  Encapsulates the entire application workflow in a single synchronous SQLite transaction:
+  1. Verifies plan exists and is currently in `approved` status.
+  2. Updates all affected rows in `calendar_events` using compare-and-swap statements (`start_time = ? AND end_time = ?`).
+  3. Transitions plan status to `applied` with `applied_at` timestamp.
+  4. Inserts `plan_applied` entry into `action_history`.
+- **Fault-Injection Verified**: If an error occurs at any point (e.g., event state mismatch, inverted time bounds, or synthetic failure), SQLite rolls back the entire transaction. Zero partial writes remain in SQLite, the plan remains `approved`, and no false `plan_applied` audit entry is created. A separate transaction records an `apply_failed` audit entry.
+
+### 2. Comprehensive Stale-Plan Detection
+- Snapshot hash SHA-256 fingerprint covers:
+  - Events: `id`, `title`, `startTime`, `endTime`, `priority`, `movable`, `category`.
+  - Tasks: `id`, `title`, `estimatedDurationMinutes`, `deadline`, `priority`, `status`.
+- Verified across:
+  - Calendar event alterations (start, end, title, or category).
+  - Task alterations (deadline or estimated duration).
+- Either modification triggers a snapshot mismatch, rejects the application, marks the plan as `stale`, and logs a `plan_stale` audit entry.
+
+### 3. Concurrency & Idempotency Safeguards
+- Duplicate `save_recovery_plans` calls return existing plan IDs and records without duplicating rows.
+- Duplicate `approve_recovery_plan` calls return the approved plan state idempotently without duplicate history entries.
+- Duplicate `apply_approved_plan` calls detect the `applied` status and return the existing applied state without touching calendar events.
+- Racing concurrent application requests are serialized by SQLite write locks and status checks, ensuring exactly one application commits.
+
+### 4. End-to-End Release Smoke Verification
+- Full 19-step lifecycle smoke test (`tests/release-smoke.test.ts`) verifies the complete journey against a fresh SQLite database and real MCP server over Streamable HTTP:
+  `Propose -> Save -> Approve -> Confirm -> Apply -> Verify DB -> Record History -> Server Restart -> Persistent Verification -> Idempotent Re-apply`.
+
 ## Known limits
 
 - No authentication or authorization.

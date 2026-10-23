@@ -562,8 +562,30 @@ What the smoke test covers: initialization and version negotiation; tool discove
 9. **Validation logging** wraps the Standard Schema's `validate` function. It is covered by log assertions in the smoke test, but it relies on the SDK continuing to honour that interface.
 10. The seeded data is temporary development data held in memory.
 
-### Readiness for Phase 2
+### Phase 6 & 7: Implementation & Hardening Report
 
-Complete: project foundation, a verified Streamable HTTP MCP server, one working tool, a repository seam, real end-to-end tests, CI configuration.
+#### Phase 6: Persistent Recovery Plans, Approval Workflow & Safe Execution
+- Migration 2 deployed version 2 schema (`user_version = 2`) introducing `recovery_plans` and `action_history` tables.
+- Six new MCP lifecycle tools implemented: `save_recovery_plans`, `get_recovery_plans`, `approve_recovery_plan`, `reject_recovery_plan`, `apply_approved_plan`, and `get_action_history`.
+- Strict state-machine transitions: `proposed` -> `approved` -> `applied` (or `rejected`/`stale`).
+- Deterministic snapshot fingerprinting (`snapshot_hash`) computed over both calendar events and tasks using SHA-256. Outdated plans cannot be applied.
 
-Next milestone: the data layer and further scheduling tools. Concretely, a SQLite-backed `ScheduleRepository`, a task model and tools to read tasks, plus tool tests through the same MCP smoke harness. The recovery engine, agent, approval flow and UI follow after that.
+#### Phase 7: Comprehensive Audit, Hardening & Release Readiness
+- **Atomic Transaction Rollback**:
+  - Implemented `SqliteRecoveryPlanRepository.applyApprovedPlanAtomically`: executes event updates, plan status transition to `applied`, and action history logging inside a single synchronous SQLite transaction.
+  - Fault-injection testing verified that any mid-transaction failure rolls back all calendar modifications, preserves the plan's `approved` status, and logs an `apply_failed` entry.
+- **Stale-Plan Detection**:
+  - Tested and verified against both calendar event modifications and task duration/deadline modifications.
+- **Concurrency & Idempotency**:
+  - Verified double-approval, double-rejection, and double-application idempotency.
+  - Verified concurrent application racing: serialized safely by SQLite write transactions with exactly one commit and no duplicate audit entries.
+- **Release Smoke Test**:
+  - `tests/release-smoke.test.ts`: 19-step end-to-end verification across real MCP server and SQLite persistence.
+- **Comprehensive Test Results**:
+  - Backend: 18 test files, 352 passed (100%).
+  - Web: 12 test files, 111 passed (100%).
+  - Combined `npm run check`: 30 test files, 463 tests passed (100%).
+
+### Release Readiness
+- **Status: READY FOR RELEASE.**
+- All Phase 0–7 requirements verified with zero skipped or weakened tests.

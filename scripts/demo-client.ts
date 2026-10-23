@@ -101,6 +101,30 @@ async function main(): Promise<void> {
       tampered.changes.push({ eventId: 'evt-005', proposedStartTime: '2026-10-22T17:00:00+05:30', proposedEndTime: '2026-10-22T18:00:00+05:30' });
       tampered.validation = { isValid: true }; // a false claim the validator does not trust
       console.log(textOf(await call('validate_recovery_plan', tampered as unknown as Record<string, unknown>)));
+
+      // ---- Phase 6 & 7: Lifecycle, Approval, Safe Application & Action History ----
+      console.log('\n=== save_recovery_plans: persist candidates with persistent IDs ===');
+      const saveRes = await call('save_recovery_plans', {
+        requestId: 'demo-req-001',
+        plans: [candidates[0]],
+      });
+      console.log(textOf(saveRes));
+      const savedPlans = (saveRes.structuredContent as { plans: Array<{ id: string }> })?.plans ?? [];
+      const planId = savedPlans[0]?.id;
+
+      if (planId) {
+        console.log(`\n=== approve_recovery_plan: user explicitly approves plan ${planId} (calendar unchanged) ===`);
+        const approveRes = await call('approve_recovery_plan', { planId, actor: 'demo-user' });
+        console.log(textOf(approveRes));
+
+        console.log('\n=== apply_approved_plan: atomically commit approved plan to SQLite ===');
+        const applyRes = await call('apply_approved_plan', { planId, actor: 'demo-user' });
+        console.log(textOf(applyRes));
+
+        console.log('\n=== get_action_history: permanent audit trail of operations ===');
+        const historyRes = await call('get_action_history', { recoveryPlanId: planId });
+        console.log(textOf(historyRes));
+      }
     }
 
     console.log('\nSame afternoon interval expressed in UTC (06:30Z to 12:30Z) returns the same events:');

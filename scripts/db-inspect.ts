@@ -25,12 +25,32 @@ try {
 
   console.log('\ncalendar_events');
   console.table(db.prepare('SELECT id, title, start_time, end_time, priority, movable, category FROM calendar_events ORDER BY start_ms, id').all());
-  console.log('tasks');
+  console.log('\ntasks');
   console.table(
     db
       .prepare('SELECT id, title, estimated_duration_minutes AS minutes, deadline, priority, status FROM tasks ORDER BY deadline_ms, id')
       .all(),
   );
+
+  const planCount = db.prepare('SELECT COUNT(*) as count FROM recovery_plans').get() as { count: number };
+  console.log(`\nrecovery_plans (${planCount.count} total)`);
+  if (planCount.count > 0) {
+    console.table(
+      db
+        .prepare('SELECT id, request_id, source_plan_id, status, snapshot_hash, approved_at, applied_at, updated_at FROM recovery_plans ORDER BY updated_at DESC LIMIT 10')
+        .all(),
+    );
+  }
+
+  const historyCount = db.prepare('SELECT COUNT(*) as count FROM action_history').get() as { count: number };
+  console.log(`\naction_history (${historyCount.count} total)`);
+  if (historyCount.count > 0) {
+    console.table(
+      db
+        .prepare('SELECT id, recovery_plan_id, action_type, occurred_at, actor FROM action_history ORDER BY occurred_at DESC LIMIT 10')
+        .all(),
+    );
+  }
 } finally {
   db.close();
 }
