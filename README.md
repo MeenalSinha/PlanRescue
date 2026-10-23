@@ -6,7 +6,7 @@ PlanRescue is a consequence-aware schedule recovery agent. When a meeting runs l
 
 This repository is the submission for the **Amazon Developer Hackathon 2026, Alexa+ track**. That track requires a genuine MCP server over the Streamable HTTP transport, so the first thing built here is exactly that: a real MCP server, exercised by a real MCP client.
 
-## Current scope (Phase 0 to Phase 8)
+## Current scope (Phase 0 to Phase 9)
 
 Implemented and verified:
 
@@ -39,7 +39,12 @@ Implemented and verified:
   - Two export formats: clean, human-readable Markdown (`.md`) and strictly validated JSON (`.json`, schema version `1.0.0`).
   - Read-only safety guarantees: report inspection and export never mutate calendar events, plan lifecycle states, or audit history.
   - Integrated in the PlanRescue web application (`apps/web`): users can inspect the report modal (with Structured, Markdown, and JSON views) or download `.md` and `.json` reports directly with a single click.
-  - 476 tests across 32 test suites passing 100% (363 backend tests in 19 files + 113 web tests in 13 files).
+- **Phase 9 Amazon Bedrock Integration & Provider Architecture (AWS Builder Mini Challenge)**:
+  - Runtime foundation model inference via official AWS SDK v3 (`@aws-sdk/client-bedrock-runtime`) and the Bedrock Converse API (`ConverseCommand`).
+  - Pluggable `LlmProvider` architecture with unified factory (`createAgentProvider`), selectable via `PLANRESCUE_AGENT_PROVIDER` (`openai` or `bedrock`).
+  - Bounded intent extraction: Bedrock foundation models interpret natural-language requests into structured, Zod-validated `ExtractedIntent` contracts without autonomous write privileges.
+  - Preserves deterministic Recovery Engine, independent constraint validation, and explicit user approval guards.
+  - 502 tests across 33 test suites passing 100% (363 backend tests in 19 files + 139 web tests in 14 files). Comprehensive documentation in `docs/aws-bedrock-integration.md` and `docs/aws-builder-submission.md`.
 
 ### Known Limitations
 * **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
@@ -57,6 +62,7 @@ Implemented and verified:
 | Database | SQLite through `better-sqlite3` 13.0.3 (pinned exactly; bundles SQLite 3.53.4). Synchronous API, transactions, no server process, prebuilt binaries for supported Node versions. |
 | Validation | zod 4 (a Standard Schema, as the SDK recommends) |
 | Transport | Streamable HTTP, plain `node:http` with the SDK's Node adapter |
+| Cloud AI / LLM | Amazon Bedrock (`@aws-sdk/client-bedrock-runtime` 3.1156.0 via Converse API) & OpenAI (`openai` 7.43.0) |
 | Tests | Vitest 5 plus the official MCP client |
 | Packages | npm with a committed `package-lock.json` |
 
@@ -123,6 +129,8 @@ On every later start the last line reads `inserted 0 events, 0 tasks`.
 | `npm run build:web` | Production build of the web interface |
 | `npm run typecheck:web` | Type check the web interface |
 | `npm run test:web:unit` | Web tests that need no server: helpers, request schemas, MCP client failure mapping, architecture guard, component tests |
+| `npm run test:bedrock` | Run Phase 9 Amazon Bedrock provider, factory, and error-mapping tests |
+| `npm run test:bedrock:live` | Opt-in live Bedrock smoke test against real AWS runtime (requires AWS credentials & model access) |
 | `npm run test:web` | Build backend and web, then run every web test, including the real-MCP integration and end-to-end tests |
 | `npm run test:e2e` | Build, then run only the web end-to-end tests |
 
@@ -415,13 +423,21 @@ Grounded Explanation Generator (apps/web/src/lib/agent/explanations.ts)
 Client State & UI (Updates Chat, AnalysisPanel, PlanComparison, ValidationPanel, ActivityPanel)
 ```
 
-### LLM Provider Integration
+### LLM Provider Architecture (Phase 5 & Phase 9)
 
-- **SDK**: Official TypeScript SDK `openai` (`^7.43.0`).
-- **Adapter**: `OpenAiProvider` in `apps/web/src/lib/agent/provider.ts` using structured outputs (`response_format: { type: 'json_object' }`) validated with Zod.
-- **Model**: Default `gpt-4o-mini`, configurable via `PLANRESCUE_AGENT_MODEL`.
-- **Server-Side Safety**: All credentials and API calls remain strictly on the Next.js server; no API keys are exposed to the browser or client-side code.
-- **Graceful Fallback**: If `OPENAI_API_KEY` is not configured or the agent provider fails, the system returns a clear, user-facing notice explaining that the AI agent is unconfigured and guides the user to the fully functional structured controls.
+PlanRescue features a provider-agnostic `LlmProvider` interface and factory (`apps/web/src/lib/agent/factory.ts`):
+- **Amazon Bedrock Provider (Phase 9 - AWS Builder Mini Challenge)**:
+  - **SDK**: Official `@aws-sdk/client-bedrock-runtime` (`^3.1156.0`).
+  - **Adapter**: `BedrockProvider` (`apps/web/src/lib/agent/bedrockProvider.ts`) invoking the Converse API (`ConverseCommand`).
+  - **Model**: Default `anthropic.claude-3-5-sonnet-20240620-v1:0` (or US inference profile `us.anthropic.claude-3-5-sonnet-20240620-v1:0`), configurable via `BEDROCK_MODEL_ID`.
+  - **Authentication**: Standard AWS SDK credential provider chain (AWS CLI profiles, IAM roles, or environment credentials). Never hardcoded.
+- **OpenAI Provider (Phase 5)**:
+  - **SDK**: Official TypeScript SDK `openai` (`^7.43.0`).
+  - **Adapter**: `OpenAiProvider` (`apps/web/src/lib/agent/provider.ts`) using structured outputs (`response_format: { type: 'json_object' }`).
+  - **Model**: Default `gpt-4o-mini`, configurable via `PLANRESCUE_AGENT_MODEL`.
+- **Server-Side Safety**: All credentials and API calls remain strictly on the Next.js server; no API keys or AWS credentials are exposed to the browser or client-side code.
+- **Graceful Error Handling**: If the configured provider credentials are missing or model invocation fails, clear error messaging guides the user without silent fallbacks.
+- **Dedicated Documentation**: Full guide available at [`docs/aws-bedrock-integration.md`](docs/aws-bedrock-integration.md) and challenge submission details in [`docs/aws-builder-submission.md`](docs/aws-builder-submission.md).
 
 ### Environment Configuration
 
@@ -429,10 +445,16 @@ Add to `apps/web/.env.local` (or root `.env`):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | *(empty)* | OpenAI API key for natural language interpretation (server-side only) |
+| `PLANRESCUE_AGENT_PROVIDER` | `openai` | Selects AI provider: `openai` or `bedrock` |
 | `PLANRESCUE_AGENT_ENABLED` | `true` | Enable or disable the natural language agent route |
-| `PLANRESCUE_AGENT_MODEL` | `gpt-4o-mini` | Model identifier for intent extraction |
 | `PLANRESCUE_AGENT_TIMEOUT_MS` | `30000` | Maximum time allowed for LLM inference (ms) |
+| **Amazon Bedrock (when `PLANRESCUE_AGENT_PROVIDER=bedrock`)** | | |
+| `AWS_REGION` | `us-east-1` | AWS region hosting the Bedrock foundation model |
+| `BEDROCK_MODEL_ID` | `anthropic.claude-3-5-sonnet-20240620-v1:0` | Foundation model ID or inference profile |
+| `AWS_PROFILE` | *(default)* | Optional named AWS CLI profile |
+| **OpenAI (when `PLANRESCUE_AGENT_PROVIDER=openai`)** | | |
+| `OPENAI_API_KEY` | *(empty)* | OpenAI API key for natural language interpretation (server-side only) |
+| `PLANRESCUE_AGENT_MODEL` | `gpt-4o-mini` | Model identifier for intent extraction |
 | `OPENAI_BASE_URL` | *(standard OpenAI API)* | Optional custom endpoint or reverse proxy for OpenAI-compatible models |
 
 ### Bounded Orchestration & Security Guards
@@ -443,14 +465,16 @@ Add to `apps/web/.env.local` (or root `.env`):
 4. **Limits**: Max request body size (64 KB), bounded chat history (last 10 turns), message length caps, and per-tool call timeouts.
 5. **Strictly Read-Only**: The agent does not modify the database. The banner explicitly states *"Recovery plan proposed — calendar unchanged"*.
 
-### Testing the Agent
+### Testing the Agent & Bedrock Provider
 
+- **Bedrock Provider Tests**: `npx vitest run apps/web/tests/agent.bedrock.test.ts` (26 tests - structured output, code-fenced JSON, clarification, schema validation, timeout, credential errors, authorization failures, throttling, provider selection, route integration)
+- **Live AWS Bedrock Smoke Test**: `npm run test:bedrock:live` (opt-in runtime verification against live AWS Bedrock)
 - **Unit Intent Tests**: `npx vitest run apps/web/tests/agent.intent.test.ts` (10 tests)
 - **Security & Guard Tests**: `npx vitest run apps/web/tests/agent.security.test.ts` (5 tests)
 - **Orchestration Tests**: `npx vitest run apps/web/tests/agent.orchestration.test.ts` (4 tests)
 - **Component UI Tests**: `npx vitest run apps/web/tests/agent.component.test.tsx` (8 tests)
 - **Real MCP Integration Tests**: `npx vitest run apps/web/tests/agent.integration.test.ts` (4 tests - executes live MCP server over Streamable HTTP and verifies real tool responses and untouched database fingerprint)
-- **Full Web Suite**: `npm run test:web` (111 tests in 12 files)
+- **Full Web Suite**: `npm run test:web` (139 tests in 14 files)
 
 ## Data layer (SQLite)
 

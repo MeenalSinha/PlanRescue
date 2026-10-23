@@ -35,11 +35,34 @@ export async function POST(request: Request): Promise<NextResponse> {
     return fail('invalid_request', 'Invalid agent request.', [], fields);
   }
 
-  const agentConfig = loadAgentConfig();
-  if (!agentConfig.enabled || !agentConfig.apiKey) {
+  let agentConfig;
+  try {
+    agentConfig = loadAgentConfig();
+  } catch (error) {
+    if (error instanceof AgentProviderError) {
+      return fail('misconfigured', error.message);
+    }
+    throw error;
+  }
+
+  if (!agentConfig.enabled) {
+    return fail(
+      'misconfigured',
+      'The AI agent is disabled in configuration. Set PLANRESCUE_AGENT_ENABLED=true in apps/web/.env.local or use the structured controls below.',
+    );
+  }
+
+  if (agentConfig.provider === 'openai' && !agentConfig.apiKey) {
     return fail(
       'misconfigured',
       'The AI agent requires an OPENAI_API_KEY. Add OPENAI_API_KEY to apps/web/.env.local or use the structured controls below.',
+    );
+  }
+
+  if (agentConfig.provider === 'bedrock' && (!agentConfig.bedrock.region || !agentConfig.bedrock.modelId)) {
+    return fail(
+      'misconfigured',
+      'The AI agent requires AWS_REGION and BEDROCK_MODEL_ID for Amazon Bedrock. Configure them in apps/web/.env.local or use the structured controls below.',
     );
   }
 

@@ -408,9 +408,87 @@ Phase 8 introduces audit-grade, exportable **Recovery Decision Reports** in both
   - **Modal Inspector**: Interactive tabbed modal allowing users to inspect the structured view, raw Markdown, or raw JSON without leaving the browser.
 - Respects architectural boundaries: The frontend generates client-side reports directly from MCP-provided contract data, preserving strict route whitelisting and eliminating unnecessary cross-boundary imports.
 
+## Phase 9: Amazon Bedrock Foundation Model Integration & Provider Architecture
+
+Phase 9 integrates **Amazon Bedrock** into PlanRescue's natural-language scheduling architecture as part of the AWS Builder Mini Challenge (Alexa+ Track, Amazon Developer Hackathon 2026).
+
+```
+User natural-language request (AgentChat.tsx)
+        │
+        ▼
+Next.js Agent route handler (/api/agent/turn)
+        │
+        ├── Grounding context via MCP (get_schedule & get_tasks)
+        │
+        ▼
+Provider Factory (apps/web/src/lib/agent/factory.ts)
+        │
+        ├── PLANRESCUE_AGENT_PROVIDER=openai  ──► OpenAiProvider (openai SDK)
+        │
+        └── PLANRESCUE_AGENT_PROVIDER=bedrock ──► BedrockProvider (@aws-sdk/client-bedrock-runtime)
+                                                    ConverseCommand ({ modelId, system, messages })
+                                                        │
+        ┌───────────────────────────────────────────────┘
+        ▼
+JSON Intent Extraction & Zod Validation (rawExtractedIntentSchema)
+        │
+        ▼
+Grounded Schedule Verification (rejects hallucinated event IDs)
+        │
+        ▼
+MCP analyze_conflicts ──► MCP propose_recovery_plan ──► MCP validate_recovery_plan
+        │
+        ▼
+Grounded Explanation & User Review
+        │
+        ▼
+Explicit User Approval & Apply Confirmation Modal
+        │
+        ▼
+MCP apply_approved_plan (Atomic SQLite Transaction & Audit Trail)
+```
+
+### 1. Unified Provider Abstraction
+
+- **`LlmProvider` Interface** (`apps/web/src/lib/agent/provider.ts`):
+  ```typescript
+  export interface LlmProvider {
+    extractIntent(
+      userMessage: string,
+      context: GroundingContext,
+      history?: AgentChatMessage[],
+    ): Promise<ExtractedIntent>;
+  }
+  ```
+- **Provider Factory** (`apps/web/src/lib/agent/factory.ts`):
+  - Selects `BedrockProvider` when `PLANRESCUE_AGENT_PROVIDER=bedrock`.
+  - Selects `OpenAiProvider` when `PLANRESCUE_AGENT_PROVIDER=openai` (or unset).
+  - Keeps bounded agent orchestration completely provider-agnostic.
+
+### 2. Amazon Bedrock Runtime Adapter (`BedrockProvider`)
+
+- **Official AWS SDK v3 Client**:
+  - Uses `@aws-sdk/client-bedrock-runtime` (`BedrockRuntimeClient`, `ConverseCommand`).
+  - Implements the Bedrock Converse API for standardized conversational inference across foundation model families (Anthropic Claude 3 / 3.5 Haiku, Amazon Nova Micro / Lite, etc.).
+- **Safe JSON Extraction**:
+  - `extractJsonFromText`: Parses clean JSON, markdown code fence blocks (` ```json ... ``` `), and braced JSON substrings without crashing.
+  - Validates output using Zod (`rawExtractedIntentSchema`).
+- **Error Mapping & Security**:
+  - Maps AWS timeouts to `provider_timeout`.
+  - Maps missing credentials, IAM unauthorized (`AccessDeniedException`), and model-not-found errors to `agent_misconfigured`.
+  - Maps AWS rate limits to `provider_unavailable`.
+  - Zero AWS credentials, secret keys, or raw stack traces are ever exposed to the client or browser.
+
+### 3. Preserved Scheduling and Execution Guarantees
+
+- **Bedrock Only Interprets Intent**: Bedrock extracts structured parameters (`targetEventId`, `overrunMinutes`, `protectedEventIds`). It does not compute schedule feasibility, enforce constraints, or modify events.
+- **MCP Authority**: All schedule data retrieval, conflict detection, plan generation, and validation remain deterministic and executed by the MCP server.
+- **Write-Capable Safety**: The AI agent has zero access to write-capable MCP tools (`approve_recovery_plan`, `reject_recovery_plan`, `apply_approved_plan`). Applying schedule changes strictly requires deliberate user approval and confirmation.
+
 ## Known Limitations
 
 * **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
 * **Local Calendar Target**: Execution modifies the local PlanRescue SQLite calendar database; integration with Google Calendar or Microsoft Graph APIs is intentionally out of scope.
 * **Disruption Types**: Focused on `event_overrun` scenarios; travel delays and multi-day replanning remain future extensions.
 * **Report Scope**: Reports reflect actual persisted and session data; missing or unrecorded history is stated honestly rather than manufactured.
+

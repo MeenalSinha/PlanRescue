@@ -2,7 +2,7 @@
   "name": "planrescue-web",
   "version": "0.1.0",
   "private": true,
-  "description": "PlanRescue web interface (Phases 4-8). Talks to the PlanRescue MCP server through server-side route handlers only.",
+  "description": "PlanRescue web interface (Phases 4-9). Talks to the PlanRescue MCP server through server-side route handlers only.",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
@@ -13,11 +13,14 @@
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:unit": "vitest run tests/lib.test.ts tests/architecture.test.ts tests/mcpClient.test.ts tests/app.component.test.tsx tests/agent.intent.test.ts tests/agent.security.test.ts tests/agent.orchestration.test.ts tests/agent.component.test.tsx tests/report.test.ts",
+    "test:unit": "vitest run tests/lib.test.ts tests/architecture.test.ts tests/mcpClient.test.ts tests/app.component.test.tsx tests/agent.intent.test.ts tests/agent.security.test.ts tests/agent.orchestration.test.ts tests/agent.component.test.tsx tests/report.test.ts tests/agent.bedrock.test.ts",
+    "test:bedrock": "vitest run tests/agent.bedrock.test.ts",
+    "test:bedrock:live": "tsx scripts/test-bedrock-live.ts",
     "test:integration": "vitest run tests/routes.integration.test.ts tests/agent.integration.test.ts",
     "test:e2e": "vitest run tests/workflow.e2e.test.tsx tests/http.e2e.test.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1156.0",
     "@modelcontextprotocol/client": "^2.3.1",
     "next": "^16.4.2",
     "openai": "^7.43.0",

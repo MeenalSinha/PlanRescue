@@ -2,7 +2,7 @@
   "name": "planrescue",
   "version": "0.1.0",
   "private": true,
-  "description": "PlanRescue: consequence-aware schedule recovery. Phases 0-8: Streamable HTTP MCP server, SQLite persistence, deterministic Recovery Engine, Next.js web application, natural-language AI agent orchestration, approval workflow with atomic ACID execution, audit history, hardening, and Recovery Decision Reports.",
+  "description": "PlanRescue: consequence-aware schedule recovery. Phases 0-9: Streamable HTTP MCP server, SQLite persistence, deterministic Recovery Engine, Next.js web application, natural-language AI agent with Amazon Bedrock & OpenAI orchestration, approval workflow with atomic ACID execution, audit history, hardening, and Recovery Decision Reports.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -21,6 +21,8 @@
     "test:lifecycle": "npm run build && vitest run tests/phase6-lifecycle.test.ts",
     "test:hardening": "npm run build && vitest run tests/phase7-hardening.test.ts",
     "test:reports": "npm run build && vitest run tests/phase8-reports.test.ts",
+    "test:bedrock": "npm run test:bedrock --prefix apps/web",
+    "test:bedrock:live": "npm run test:bedrock:live --prefix apps/web",
     "test:smoke": "npm run build && vitest run tests/release-smoke.test.ts",
     "demo:client": "tsx scripts/demo-client.ts",
     "db:inspect": "tsx scripts/db-inspect.ts",

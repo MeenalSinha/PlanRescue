@@ -62,12 +62,22 @@ export interface AgentTurnData {
   calendarUnchanged: true;
 }
 
+export type AgentProviderType = 'openai' | 'bedrock';
+
+export interface BedrockConfig {
+  region: string;
+  modelId: string;
+  profile?: string;
+}
+
 export interface AgentConfig {
+  provider: AgentProviderType;
   enabled: boolean;
   model: string;
   timeoutMs: number;
   apiKey?: string;
   baseUrl?: string;
+  bedrock: BedrockConfig;
 }
 
 export interface GroundingContext {

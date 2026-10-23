@@ -31,6 +31,7 @@ import {
   generateInfeasibleMessage,
   generateUnsupportedMessage,
 } from './explanations';
+import { createAgentProvider } from './factory';
 import { loadAgentConfig, OpenAiProvider, type LlmProvider } from './provider';
 import type {
   AgentChatMessage,
@@ -93,7 +94,7 @@ export async function runAgentTurn(options: RunAgentTurnOptions): Promise<{
   };
 
   // 3. Extract Intent using LLM provider
-  const provider = options.provider ?? new OpenAiProvider(agentConfig);
+  const provider = options.provider ?? createAgentProvider(agentConfig);
   const intent: ExtractedIntent = await provider.extractIntent(
     options.message,
     groundingContext,

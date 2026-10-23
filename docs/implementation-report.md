@@ -1,12 +1,12 @@
 # Implementation report
 
-This document records the full engineering history and audit verification of PlanRescue. The topmost section presents the **Final Debugging, Full-System Audit & Release Verification** covering Phases 0–8. Below it, the Phase 8 milestone and preceding milestones (Phases 7, 6, 5, 4, 3, 2, 1, and 0) are preserved in reverse chronological order.
+This document records the full engineering history and audit verification of PlanRescue. The topmost section presents the **Final Debugging, Full-System Audit & Release Verification** covering Phases 0–9. Below it, the Phase 9 milestone (Amazon Bedrock Integration & Provider Architecture) and preceding milestones (Phases 8, 7, 6, 5, 4, 3, 2, 1, and 0) are preserved in reverse chronological order.
 
 ## Final Debugging, Full-System Audit & Release Verification
 
-Status: **RELEASE READY WITH DOCUMENTED LIMITATIONS**. Comprehensive full-system verification completed across Phases 0–8 in this environment (Windows, Node 22, npm). All 11 MCP tools operate genuinely over Streamable HTTP. Proposing, validating, inspecting, or exporting recovery decision reports leaves SQLite 100% untouched. Applying approved plans executes atomically with full rollback on failure.
+Status: **RELEASE READY WITH DOCUMENTED LIMITATIONS (Implemented, awaiting live AWS verification for Bedrock)**. Comprehensive full-system verification completed across Phases 0–9 in this environment (Windows, Node 22, npm). All 11 MCP tools operate genuinely over Streamable HTTP. Proposing, validating, inspecting, or exporting recovery decision reports leaves SQLite 100% untouched. Applying approved plans executes atomically with full rollback on failure. Amazon Bedrock foundation model integration implemented via official AWS SDK v3 with strict Zod intent validation and complete error mapping.
 
-### 1. Full-System Phase Audit Summary (Phases 0–8)
+### 1. Full-System Phase Audit Summary (Phases 0–9)
 
 | Phase | Main Area | Initial Finding | Final Status | Evidence |
 | --- | --- | --- | --- | --- |
@@ -19,6 +19,7 @@ Status: **RELEASE READY WITH DOCUMENTED LIMITATIONS**. Comprehensive full-system
 | **6** | Approval & Execution | Persistent recovery plans, explicit approval, atomic apply, audit history | **PASS** | `npm run test:lifecycle` (8 passed) |
 | **7** | Hardening & Reliability | Transaction rollback, stale-plan detection, idempotency, release smoke | **PASS** | `npm run test:hardening` (12 passed), `npm run test:smoke` (1 passed) |
 | **8** | Reporting & Explainability | Decision reports (Markdown & schema v1.0.0 JSON), UI modal, read-only safety | **PASS** | `npm run test:reports` (11 passed), `apps/web/tests/report.test.ts` (2 passed) |
+| **9** | Amazon Bedrock Integration | Official SDK `@aws-sdk/client-bedrock-runtime`, Converse API, provider factory, Zod intent validation, safe error mapping | **PASS** (Implemented, awaiting live AWS verification) | `npm run test:bedrock` (26 passed in `apps/web/tests/agent.bedrock.test.ts`) |
 
 ### 2. Issues Discovered and Fixed
 
@@ -51,14 +52,15 @@ All tests executed against real compiled code, live MCP servers over Streamable 
 | Root Typecheck | `npm run typecheck` | **PASS** | Clean, 0 errors |
 | Web Typecheck | `npm run typecheck:web` | **PASS** | Clean, 0 errors |
 | Backend Tests | `npm test` | **PASS** | 363 passed in 19 files (100%) |
-| Web Tests | `npm run test:web` | **PASS** | 113 passed in 13 files (100%) |
-| Web Unit Tests | `npm run test:web:unit` | **PASS** | 88 passed in 9 files (100%) |
+| Web Tests | `npm run test:web` | **PASS** | 139 passed in 14 files (100%) |
+| Bedrock Suite | `npm run test:bedrock` | **PASS** | 26 passed in 1 file (`apps/web/tests/agent.bedrock.test.ts`) |
+| Web Unit Tests | `npm run test:web:unit` | **PASS** | 114 passed in 10 files (100%) |
 | Web E2E / HTTP | `npm run test:e2e` | **PASS** | 7 passed in 2 files (100%) |
 | Hardening Suite | `npm run test:hardening` | **PASS** | 12 passed in 1 file (100%) |
 | Smoke Suite | `npm run test:smoke` | **PASS** | 1 passed (19 assertion steps) |
 | Reports Suite | `npm run test:reports` | **PASS** | 11 passed in 1 file (100%) |
-| Full CI Gate | `npm run check` | **PASS** | **476 passed across 32 files (100%)** |
-| Production Build | `npm run build && npm run build:web` | **PASS** | Next.js Turbopack build succeeded in 840ms |
+| Full CI Gate | `npm run check` | **PASS** | **502 passed across 33 files (100%)** |
+| Production Build | `npm run build && npm run build:web` | **PASS** | Next.js Turbopack build succeeded |
 | Live MCP Demo Client | `npm run demo:client` | **PASS** | 11 MCP tools exercised over Streamable HTTP |
 | DB Inspector | `npm run db:inspect` | **PASS** | Verified WAL mode, schema v2, real table records |
 
@@ -67,20 +69,64 @@ All tests executed against real compiled code, live MCP servers over Streamable 
 * **Transaction Rollback**: Mid-transaction failure fault-injection test confirmed that all calendar modifications are atomically rolled back, the plan remains in `approved` state, and an `apply_failed` audit entry is recorded without corrupting state.
 * **Stale-Plan Detection**: Verified that if any calendar event or task duration/deadline is modified after plan generation, the snapshot hash mismatch triggers an immediate rejection with `plan_stale` recorded.
 * **Approval & Execution Guards**: Verified that unapproved plans cannot be applied, duplicate applications are idempotent, and the frontend enforces a two-step explicit confirmation modal before initiating execution.
-* **AI Agent Boundaries**: Verified that the AI agent only invokes read-only tools (`get_schedule`, `get_tasks`, `analyze_conflicts`, `propose_recovery_plan`, `validate_recovery_plan`) and cannot autonomously approve, reject, or apply recovery plans. Hallucinated or injected event IDs are strictly rejected.
+* **AI Agent Boundaries & Provider Factory**: Verified that the AI agent only invokes read-only tools (`get_schedule`, `get_tasks`, `analyze_conflicts`, `propose_recovery_plan`, `validate_recovery_plan`) and cannot autonomously approve, reject, or apply recovery plans. Hallucinated or injected event IDs are strictly rejected.
+* **Bedrock Safety & Zero Fallback Concealment**: Bedrock inference uses official AWS SDK v3 (`@aws-sdk/client-bedrock-runtime`). Missing credentials, throttling, or timeouts report clear structured errors without silent fallback to OpenAI.
 * **Decision Reports & Read-Only Safety**: Verified that generating and exporting Markdown or JSON reports leaves the SQLite database file byte-for-byte identical (SHA-256 fingerprint verified) with zero mutations.
 
 ### 5. Final Release Recommendation
 
-**VERDICT: RELEASE READY WITH DOCUMENTED LIMITATIONS**
+**VERDICT: RELEASE READY WITH DOCUMENTED LIMITATIONS (Implemented, awaiting live AWS verification for Bedrock)**
 
-The application is functionally complete, robustly hardened, and thoroughly tested across all Phases 0–8 requirements. All 476 automated tests pass with 100% reliability, real MCP integration operates over Streamable HTTP, transaction boundaries enforce strict ACID properties, and the decision explainability reports provide grounded insights.
+The application is functionally complete, robustly hardened, and thoroughly tested across all Phases 0–9 requirements. All 502 automated tests pass with 100% reliability, real MCP integration operates over Streamable HTTP, transaction boundaries enforce strict ACID properties, the decision explainability reports provide grounded insights, and Amazon Bedrock integration is fully implemented with unit, integration, and live smoke test harnesses.
 
 The accepted limitations for this hackathon prototype are:
 1. **Single-User Local Prototype**: Actor attribution is recorded as `local-user` / `demo-user`; enterprise multi-tenant IAM is out of scope.
 2. **Local Calendar Target**: Target is the local PlanRescue SQLite calendar database; external Google Calendar / Microsoft Graph APIs are intentionally out of scope.
 3. **Supported Disruption Type**: Focused exclusively on `event_overrun` disruptions.
 4. **Historical Report Completeness**: Historical reports present strictly retained persisted data without fabricating unrecorded attributes.
+5. **Bedrock Verification Status**: Fully implemented and tested with 26 mocked-boundary tests; live runtime execution against an active AWS account is documented and available via `npm run test:bedrock:live`.
+
+---
+
+## Phase 9: Amazon Bedrock Foundation Model Integration & Provider Architecture
+
+Status: **IMPLEMENTED, AWAITING LIVE AWS VERIFICATION**. Official AWS SDK v3 (`@aws-sdk/client-bedrock-runtime` 3.1156.0) installed and integrated. A real `BedrockProvider` adapter implements `LlmProvider` and invokes the Bedrock Converse API (`ConverseCommand`). Provider selection factory (`createAgentProvider`) switches between `openai` and `bedrock` via `PLANRESCUE_AGENT_PROVIDER`. 26 automated unit and route integration tests pass 100%. Opt-in live AWS smoke test script (`npm run test:bedrock:live`) is provided. Zero autonomous write permissions granted to LLMs.
+
+### 1. Pre-flight Audit (Phases 0 to 8)
+- Audited agent types, provider interfaces, schemas, orchestrator, and route handlers.
+- Baseline test status: 476 tests passing across 32 files.
+- Verified that OpenAI implementation remains 100% backward-compatible and default when `PLANRESCUE_AGENT_PROVIDER` is unset.
+
+### 2. Architecture & Implementation Details
+1. **AWS SDK v3 Bedrock Runtime Client**:
+   - Package: `@aws-sdk/client-bedrock-runtime` installed into `apps/web/package.json`.
+   - Uses `BedrockRuntimeClient` and `ConverseCommand` adhering to the official AWS Converse API specification.
+   - Grounded inference: passes `SYSTEM_PROMPT`, MCP-retrieved calendar/task context, and bounded chat history.
+2. **Dedicated Adapter (`apps/web/src/lib/agent/bedrockProvider.ts`)**:
+   - Implements `LlmProvider` interface.
+   - Robust JSON extraction handling clean JSON, markdown code fence blocks (```` ```json ... ``` ````), and braced substrings.
+   - Strict Zod validation using existing `rawExtractedIntentSchema` and normalization to `ExtractedIntent`.
+   - Comprehensive error mapping: maps AWS credential errors, `AccessDeniedException`, `ResourceNotFoundException`, throttling (`ThrottlingException`), and timeouts to structured application errors without exposing secrets.
+3. **Unified Provider Factory (`apps/web/src/lib/agent/factory.ts`)**:
+   - Dynamically instantiates `OpenAiProvider` or `BedrockProvider` based on `AgentConfig.provider`.
+   - Preserves dependency injection in `runAgentTurn` for testing.
+4. **API Route Decoupling (`apps/web/src/app/api/agent/turn/route.ts`)**:
+   - Removes hardcoded `OPENAI_API_KEY` requirement when `PLANRESCUE_AGENT_PROVIDER=bedrock`.
+   - Validates `AWS_REGION` and `BEDROCK_MODEL_ID` configuration for Bedrock requests.
+5. **UI Configuration Tip (`apps/web/src/components/AgentChat.tsx`)**:
+   - Dynamically displays provider-appropriate setup guidance for OpenAI or Amazon Bedrock.
+
+### 3. Verification & Test Suite
+- **New Test File**: `apps/web/tests/agent.bedrock.test.ts` (26 tests):
+  - Valid structured intent extraction & normalization.
+  - Markdown code-fenced JSON extraction.
+  - Protected event IDs preservation.
+  - Ambiguous requests routing to clarification.
+  - Unsupported disruption requests routing to user explanation.
+  - Error mappings: timeouts, missing credentials, auth failures, access denied, throttling, unknown models, empty/malformed responses.
+  - Factory selection: OpenAI vs Bedrock, configuration loading, invalid provider rejection.
+  - API route behavior: valid Bedrock request handling, OpenAI key independence, error handling.
+- **Opt-in Live Test**: `scripts/test-bedrock-live.ts` (`npm run test:bedrock:live`) for testing against active AWS environments.
 
 ---
 

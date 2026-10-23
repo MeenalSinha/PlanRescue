@@ -28,19 +28,45 @@ export interface LlmProvider {
 }
 
 export function loadAgentConfig(env: Record<string, string | undefined> = process.env): AgentConfig {
+  const rawProvider = env.PLANRESCUE_AGENT_PROVIDER?.trim().toLowerCase();
+  let provider: AgentConfig['provider'];
+  if (rawProvider === 'bedrock') {
+    provider = 'bedrock';
+  } else if (rawProvider === 'openai' || !rawProvider) {
+    provider = 'openai';
+  } else {
+    throw new AgentProviderError(
+      'agent_misconfigured',
+      `Unsupported PLANRESCUE_AGENT_PROVIDER: "${rawProvider}". Supported providers are "openai" or "bedrock".`,
+    );
+  }
+
   const apiKey = env.OPENAI_API_KEY?.trim() || undefined;
   const enabledStr = env.PLANRESCUE_AGENT_ENABLED?.trim();
-  const enabled = enabledStr !== undefined ? enabledStr === 'true' : Boolean(apiKey);
+  const enabled = enabledStr !== undefined ? enabledStr === 'true' : true;
+
   const model = env.PLANRESCUE_AGENT_MODEL?.trim() || 'gpt-4o-mini';
   const timeoutMs = Number(env.PLANRESCUE_AGENT_TIMEOUT_MS) || 30_000;
   const baseUrl = env.OPENAI_BASE_URL?.trim() || undefined;
 
+  const rawAwsRegion = env.AWS_REGION !== undefined ? env.AWS_REGION.trim() : undefined;
+  const rawAwsDefaultRegion = env.AWS_DEFAULT_REGION !== undefined ? env.AWS_DEFAULT_REGION.trim() : undefined;
+  const bedrockRegion = rawAwsRegion !== undefined ? rawAwsRegion : rawAwsDefaultRegion !== undefined ? rawAwsDefaultRegion : 'us-east-1';
+  const bedrockModelId = env.BEDROCK_MODEL_ID?.trim() || 'anthropic.claude-3-haiku-20240307-v1:0';
+  const bedrockProfile = env.AWS_PROFILE?.trim() || undefined;
+
   return {
+    provider,
     enabled,
     apiKey,
     model,
     timeoutMs: Math.max(5000, Math.min(timeoutMs, 120000)),
     baseUrl,
+    bedrock: {
+      region: bedrockRegion,
+      modelId: bedrockModelId,
+      profile: bedrockProfile,
+    },
   };
 }
 

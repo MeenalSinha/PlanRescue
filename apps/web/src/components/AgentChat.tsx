@@ -108,7 +108,7 @@ export function AgentChat({ history, turn, busy, onSend, onSwitchToStructured }:
           <p>{turn.error.message}</p>
           {turn.error.code === 'misconfigured' ? (
             <p className="small muted">
-              Tip: You can add <code>OPENAI_API_KEY</code> to <code>apps/web/.env.local</code> to enable natural-language recovery, or use the manual controls below.
+              Tip: Configure your AI provider in <code>apps/web/.env.local</code> (for OpenAI: <code>OPENAI_API_KEY</code>; for Amazon Bedrock: <code>AWS_REGION</code> and credentials), or use the manual controls below.
             </p>
           ) : null}
         </Notice>
