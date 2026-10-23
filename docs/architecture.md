@@ -352,14 +352,8 @@ Phase 7 hardens the implementation into a fully verified, resilient, and demonst
 - Full 19-step lifecycle smoke test (`tests/release-smoke.test.ts`) verifies the complete journey against a fresh SQLite database and real MCP server over Streamable HTTP:
   `Propose -> Save -> Approve -> Confirm -> Apply -> Verify DB -> Record History -> Server Restart -> Persistent Verification -> Idempotent Re-apply`.
 
-## Known limits
+## Known Limitations
 
-- No authentication or authorization.
-- Read-only through MCP (including the three recovery tools): nothing can create, edit or delete events or tasks except by editing the database file directly.
-- A single user and a single time zone: the calendar and task time zone is a constant (`Asia/Kolkata`) reported in tool output, not stored per user.
-- Events and tasks are not linked. The seeded "Project Deadline Work" event and the "Complete project report" task describe the same effort but nothing in the data says so.
-- Only extended-format ISO 8601 offsets are accepted (`+05:30`, not `+0530`).
-- `get_tasks` has no pagination.
-- Deleted seed rows reappear on the next start.
-- Recovery Engine limits: only the `event_overrun` disruption; moved events only ever move later; task effort is estimated as aggregate capacity (no slots, no progress tracking); no travel time; a 14-day, 500-event bound per request. See the README for the full list.
-- Web interface: structured form only; one user, one calendar, sample data, no authentication; activity history lives in the browser session; tested with Chrome 131 only.
+* **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
+* **Local Calendar Target**: Execution modifies the local PlanRescue SQLite calendar database; integration with Google Calendar or Microsoft Graph APIs is intentionally out of scope.
+* **Disruption Types**: Focused on `event_overrun` scenarios; travel delays and multi-day replanning remain future extensions.

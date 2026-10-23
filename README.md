@@ -36,10 +36,10 @@ Implemented and verified:
   - Full release smoke test executing the complete 19-step lifecycle end-to-end against real SQLite and MCP server.
   - 463 tests across 30 test suites passing 100%.
 
-Planned, not implemented:
-- Disruption types other than `event_overrun` (cancellations, new urgent tasks, travel delays)
-- Google Calendar API or Microsoft Outlook integration (execution modifies local PlanRescue SQLite calendar only)
-- Public cloud multi-tenant deployment with external user auth
+### Known Limitations
+* **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
+* **Local Calendar Target**: Execution modifies the local PlanRescue SQLite calendar database; integration with Google Calendar or Microsoft Graph APIs is intentionally out of scope.
+* **Disruption Types**: Focused on `event_overrun` scenarios; travel delays and multi-day replanning remain future extensions.
 
 ## Technology
 

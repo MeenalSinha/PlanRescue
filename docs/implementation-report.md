@@ -586,6 +586,11 @@ What the smoke test covers: initialization and version negotiation; tool discove
   - Web: 12 test files, 111 passed (100%).
   - Combined `npm run check`: 30 test files, 463 tests passed (100%).
 
+### Known Limitations
+* **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
+* **Local Calendar Target**: Execution modifies the local PlanRescue SQLite calendar database; integration with Google Calendar or Microsoft Graph APIs is intentionally out of scope.
+* **Disruption Types**: Focused on `event_overrun` scenarios; travel delays and multi-day replanning remain future extensions.
+
 ### Release Readiness
 - **Status: READY FOR RELEASE.**
 - All Phase 0–7 requirements verified with zero skipped or weakened tests.
