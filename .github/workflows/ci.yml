@@ -25,7 +25,8 @@ jobs:
       - name: Build and run all backend tests (unit + real MCP client over Streamable HTTP)
         run: npm test
       - name: Install the web interface
-        run: npm ci --prefix apps/web
+        working-directory: apps/web
+        run: npm ci
       - run: npm run typecheck:web
       - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
         run: npm run test:web

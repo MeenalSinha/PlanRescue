@@ -22,7 +22,7 @@
     "db:inspect": "tsx scripts/db-inspect.ts",
     "check": "npm run typecheck && npm test && npm run typecheck:web && npm run test:web",
     "test:recovery": "vitest run tests/recovery-time.test.ts tests/recovery-task-capacity.test.ts tests/recovery-analyze.test.ts tests/recovery-generate.test.ts tests/recovery-validate.test.ts",
-    "setup": "npm ci && npm ci --prefix apps/web",
+    "setup": "npm ci && npm --prefix apps/web ci",
     "dev:web": "npm run dev --prefix apps/web",
     "build:web": "npm run build --prefix apps/web",
     "start:web": "npm run start --prefix apps/web",
