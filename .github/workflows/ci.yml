@@ -27,7 +27,12 @@ jobs:
         run: npm test
       - name: Install the web interface
         working-directory: apps/web
-        run: npm ci --verbose
+        run: |
+          npm ci || {
+            ERR=$(tail -n 20 ~/.npm/_logs/*-debug-0.log | tr '\n' ' ')
+            echo "::error title=npm-ci-failure::$ERR"
+            exit 1
+          }
       - run: npm run typecheck:web
       - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
         run: npm run test:web
