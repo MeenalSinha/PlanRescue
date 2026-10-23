@@ -20,6 +20,7 @@ export const agentTurnRequestSchema = z.strictObject({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be formatted YYYY-MM-DD'),
   window: z.strictObject({ startTime: isoWithOffset, endTime: isoWithOffset }).optional(),
   history: z.array(agentChatMessageSchema).max(20, 'Conversation history cannot exceed 20 messages').optional(),
+  saveCandidates: z.boolean().optional(),
 });
 export type AgentTurnRequest = z.infer<typeof agentTurnRequestSchema>;
 

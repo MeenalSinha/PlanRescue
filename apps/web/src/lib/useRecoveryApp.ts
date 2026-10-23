@@ -321,6 +321,114 @@ export function useRecoveryApp() {
     return JSON.stringify(built.propose) !== JSON.stringify(analyzedRequest);
   }, [analyzedRequest, form, offset]);
 
+  const [actionHistory, setActionHistory] = useState<Remote<import('./contract').ActionHistoryItem[]>>({ status: 'idle' });
+  const [executingPlanId, setExecutingPlanId] = useState<string | null>(null);
+
+  const loadActionHistory = useCallback(async () => {
+    setActionHistory({ status: 'loading' });
+    const res = await track<import('./contract').GetActionHistoryOutput>(['get_action_history'], () =>
+      callApi<import('./contract').GetActionHistoryOutput>('/api/actions/history'),
+    );
+    record(res.activity, res);
+    if (res.ok) {
+      setActionHistory({ status: 'ready', data: res.data.entries });
+    } else {
+      setActionHistory({ status: 'error', error: res.error });
+    }
+  }, [record, track]);
+
+  const approvePlan = useCallback(
+    async (persistentId: string) => {
+      setExecutingPlanId(persistentId);
+      const res = await track<import('./contract').ApproveRecoveryPlanOutput>(['approve_recovery_plan'], () =>
+        post<import('./contract').ApproveRecoveryPlanOutput>(`/api/recovery/plans/${encodeURIComponent(persistentId)}/approve`, {}),
+      );
+      record(res.activity, res);
+      setExecutingPlanId(null);
+
+      if (res.ok) {
+        // Update plan status in proposal state
+        setProposal((prev) => {
+          if (prev.status !== 'ready') return prev;
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              candidates: prev.data.candidates.map((c) =>
+                c.persistentId === persistentId ? { ...c, savedStatus: 'approved' } : c,
+              ),
+            },
+          };
+        });
+        void loadActionHistory();
+      }
+      return res;
+    },
+    [loadActionHistory, record, track],
+  );
+
+  const rejectPlan = useCallback(
+    async (persistentId: string, reason?: string) => {
+      setExecutingPlanId(persistentId);
+      const res = await track<import('./contract').RejectRecoveryPlanOutput>(['reject_recovery_plan'], () =>
+        post<import('./contract').RejectRecoveryPlanOutput>(`/api/recovery/plans/${encodeURIComponent(persistentId)}/reject`, { reason }),
+      );
+      record(res.activity, res);
+      setExecutingPlanId(null);
+
+      if (res.ok) {
+        // Update plan status in proposal state
+        setProposal((prev) => {
+          if (prev.status !== 'ready') return prev;
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              candidates: prev.data.candidates.map((c) =>
+                c.persistentId === persistentId ? { ...c, savedStatus: 'rejected' } : c,
+              ),
+            },
+          };
+        });
+        void loadActionHistory();
+      }
+      return res;
+    },
+    [loadActionHistory, record, track],
+  );
+
+  const applyPlan = useCallback(
+    async (persistentId: string) => {
+      setExecutingPlanId(persistentId);
+      const res = await track<import('./contract').ApplyApprovedPlanOutput>(['apply_approved_plan'], () =>
+        post<import('./contract').ApplyApprovedPlanOutput>(`/api/recovery/plans/${encodeURIComponent(persistentId)}/apply`, {}),
+      );
+      record(res.activity, res);
+      setExecutingPlanId(null);
+
+      if (res.ok) {
+        // Update plan status in proposal state
+        setProposal((prev) => {
+          if (prev.status !== 'ready') return prev;
+          return {
+            ...prev,
+            data: {
+              ...prev.data,
+              candidates: prev.data.candidates.map((c) =>
+                c.persistentId === persistentId ? { ...c, savedStatus: 'applied' } : c,
+              ),
+            },
+          };
+        });
+        // Refresh dashboard to display the updated schedule timeline!
+        void loadDashboard(date);
+        void loadActionHistory();
+      }
+      return res;
+    },
+    [date, loadActionHistory, loadDashboard, record, track],
+  );
+
   return {
     date,
     dashboard,
@@ -338,6 +446,8 @@ export function useRecoveryApp() {
     agentTurn,
     chatHistory,
     mode,
+    actionHistory,
+    executingPlanId,
     setMode,
     sendAgentMessage,
     clearChat,
@@ -345,9 +455,16 @@ export function useRecoveryApp() {
     setForm,
     setSelectedPlanId,
     changeDate,
-    refresh: () => loadDashboard(date),
+    refresh: () => {
+      void loadDashboard(date);
+      void loadActionHistory();
+    },
     analyze,
     generatePlans,
     verifyPlan,
+    approvePlan,
+    rejectPlan,
+    applyPlan,
+    loadActionHistory,
   };
 }

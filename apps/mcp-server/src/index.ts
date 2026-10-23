@@ -1,6 +1,8 @@
 import { ConfigError, loadConfig } from './config.js';
 import { SqliteScheduleRepository } from './data/sqliteScheduleRepository.js';
 import { SqliteTaskRepository } from './data/sqliteTaskRepository.js';
+import { SqliteRecoveryPlanRepository } from './data/sqliteRecoveryPlanRepository.js';
+import { SqliteActionHistoryRepository } from './data/sqliteActionHistoryRepository.js';
 import { countRows, initializeDatabase, type InitializedDatabase } from './db/database.js';
 import { startHttpServer } from './http.js';
 import { createLogger } from './logger.js';
@@ -42,6 +44,8 @@ async function main(): Promise<void> {
     running = await startHttpServer(config, {
       repository: new SqliteScheduleRepository(database.db),
       taskRepository: new SqliteTaskRepository(database.db),
+      recoveryPlanRepository: new SqliteRecoveryPlanRepository(database.db),
+      actionHistoryRepository: new SqliteActionHistoryRepository(database.db),
       logger,
     });
   } catch (error) {
@@ -60,7 +64,7 @@ async function main(): Promise<void> {
   logger.info('Transport: Streamable HTTP');
   logger.info(`Endpoint: ${running.url}`);
   logger.info(`Health check: ${new URL('/healthz', running.url).href}`);
-  logger.info(`Tool registered: ${running.toolNames.join(', ')}`);
+  logger.info(`Tools registered: ${running.toolNames.join(', ')}`);
   logger.info(
     `Data source: SQLite ${database.path} (schema v${database.schemaVersion}, ${counts.events} events, ${counts.tasks} tasks)`,
   );

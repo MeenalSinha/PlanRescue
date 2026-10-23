@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { CATEGORIES, MAX_TASK_DURATION_MINUTES, PRIORITIES, TASK_STATUSES } from '../types.js';
+import { ACTION_TYPES, CATEGORIES, MAX_TASK_DURATION_MINUTES, PRIORITIES, RECOVERY_PLAN_STATUSES, TASK_STATUSES } from '../types.js';
 
 export type Db = Database.Database;
 
@@ -58,6 +58,45 @@ export const MIGRATIONS: readonly Migration[] = [
         ) STRICT;
         CREATE INDEX idx_tasks_deadline        ON tasks (deadline_ms);
         CREATE INDEX idx_tasks_status_deadline ON tasks (status, deadline_ms);
+      `);
+    },
+  },
+  {
+    version: 2,
+    description: 'recovery_plans and action_history tables with indexes',
+    up(db) {
+      db.exec(`
+        CREATE TABLE recovery_plans (
+          id             TEXT PRIMARY KEY NOT NULL CHECK (length(id) > 0),
+          request_id     TEXT NOT NULL CHECK (length(request_id) > 0),
+          source_plan_id TEXT NOT NULL CHECK (length(source_plan_id) > 0),
+          status         TEXT NOT NULL CHECK (status IN (${sqlList(RECOVERY_PLAN_STATUSES)})),
+          plan_json      TEXT NOT NULL,
+          planning_start TEXT NOT NULL,
+          planning_end   TEXT NOT NULL,
+          snapshot_hash  TEXT NOT NULL,
+          created_at     TEXT NOT NULL,
+          updated_at     TEXT NOT NULL,
+          approved_at    TEXT,
+          rejected_at    TEXT,
+          applied_at     TEXT,
+          UNIQUE (request_id, source_plan_id)
+        ) STRICT;
+        CREATE INDEX idx_recovery_plans_status     ON recovery_plans (status);
+        CREATE INDEX idx_recovery_plans_request_id ON recovery_plans (request_id);
+        CREATE INDEX idx_recovery_plans_updated_at ON recovery_plans (updated_at DESC, id ASC);
+
+        CREATE TABLE action_history (
+          id               TEXT PRIMARY KEY NOT NULL CHECK (length(id) > 0),
+          recovery_plan_id TEXT,
+          action_type      TEXT NOT NULL CHECK (action_type IN (${sqlList(ACTION_TYPES)})),
+          occurred_at      TEXT NOT NULL,
+          actor            TEXT NOT NULL CHECK (length(trim(actor)) > 0),
+          details_json     TEXT
+        ) STRICT;
+        CREATE INDEX idx_action_history_plan_id     ON action_history (recovery_plan_id);
+        CREATE INDEX idx_action_history_occurred_at ON action_history (occurred_at DESC, id ASC);
+        CREATE INDEX idx_action_history_action_type ON action_history (action_type);
       `);
     },
   },

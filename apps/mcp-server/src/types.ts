@@ -45,6 +45,16 @@ export interface TimeRange {
 export interface ScheduleRepository {
   /** Events overlapping the range, in chronological order. */
   findOverlapping(range: TimeRange): Promise<ScheduleEvent[]>;
+  /** Apply schedule changes atomically. If any event's original time does not match, throws an error. */
+  applyEventChanges?(changes: EventChangeUpdate[]): Promise<void>;
+}
+
+export interface EventChangeUpdate {
+  eventId: string;
+  originalStartTime: string;
+  originalEndTime: string;
+  proposedStartTime: string;
+  proposedEndTime: string;
 }
 
 /**
@@ -90,3 +100,101 @@ export interface TaskRepository {
    */
   findTasks(query?: TaskQuery): Promise<Task[]>;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 6: Recovery Plan Lifecycle & Action History
+// ---------------------------------------------------------------------------
+
+export const RECOVERY_PLAN_STATUSES = ['proposed', 'approved', 'rejected', 'applied', 'stale'] as const;
+export type RecoveryPlanStatus = (typeof RECOVERY_PLAN_STATUSES)[number];
+
+export const ACTION_TYPES = [
+  'plan_saved',
+  'plan_approved',
+  'plan_rejected',
+  'approval_cancelled',
+  'plan_applied',
+  'plan_stale',
+  'apply_failed',
+] as const;
+export type ActionType = (typeof ACTION_TYPES)[number];
+
+export interface SavedRecoveryPlan {
+  id: string;
+  requestId: string;
+  sourcePlanId: string;
+  status: RecoveryPlanStatus;
+  planJson: string;
+  planningStart: string;
+  planningEnd: string;
+  snapshotHash: string;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  appliedAt?: string;
+}
+
+export interface NewRecoveryPlan {
+  id: string;
+  requestId: string;
+  sourcePlanId: string;
+  status: RecoveryPlanStatus;
+  planJson: string;
+  planningStart: string;
+  planningEnd: string;
+  snapshotHash: string;
+}
+
+export interface RecoveryPlanQuery {
+  planId?: string;
+  status?: RecoveryPlanStatus;
+  requestId?: string;
+  limit?: number;
+}
+
+export interface RecoveryPlanRepository {
+  savePlan(plan: NewRecoveryPlan): Promise<SavedRecoveryPlan>;
+  getPlan(id: string): Promise<SavedRecoveryPlan | null>;
+  findPlans(query?: RecoveryPlanQuery): Promise<SavedRecoveryPlan[]>;
+  updatePlanStatus(
+    id: string,
+    toStatus: RecoveryPlanStatus,
+    options?: {
+      expectedStatus?: RecoveryPlanStatus | RecoveryPlanStatus[];
+      approvedAt?: string;
+      rejectedAt?: string;
+      appliedAt?: string;
+    },
+  ): Promise<SavedRecoveryPlan>;
+}
+
+export interface ActionHistoryEntry {
+  id: string;
+  recoveryPlanId?: string;
+  actionType: ActionType;
+  occurredAt: string;
+  actor: string;
+  detailsJson?: string;
+}
+
+export interface NewActionHistoryEntry {
+  id?: string;
+  recoveryPlanId?: string;
+  actionType: ActionType;
+  occurredAt?: string;
+  actor: string;
+  detailsJson?: string;
+}
+
+export interface ActionHistoryQuery {
+  recoveryPlanId?: string;
+  actionType?: ActionType;
+  limit?: number;
+}
+
+export interface ActionHistoryRepository {
+  recordAction(entry: NewActionHistoryEntry): Promise<ActionHistoryEntry>;
+  findActions(query?: ActionHistoryQuery): Promise<ActionHistoryEntry[]>;
+}
+

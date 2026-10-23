@@ -29,12 +29,18 @@ describe('the frontend stays on the MCP side of the boundary', () => {
     expect(users).toEqual(['lib/mcpClient.ts']);
   });
 
-  it('exposes only the five allow-listed routes, each calling fixed tools', () => {
+  it('exposes only the eleven allow-listed routes, each calling fixed tools', () => {
     const routes = sources.filter((s) => s.path.startsWith('app/api/')).map((s) => s.path.replace(/\\/g, '/')).sort();
     expect(routes).toEqual([
+      'app/api/actions/history/route.ts',
       'app/api/agent/turn/route.ts',
       'app/api/dashboard/route.ts',
       'app/api/recovery/analyze/route.ts',
+      'app/api/recovery/plans/[planId]/apply/route.ts',
+      'app/api/recovery/plans/[planId]/approve/route.ts',
+      'app/api/recovery/plans/[planId]/reject/route.ts',
+      'app/api/recovery/plans/[planId]/route.ts',
+      'app/api/recovery/plans/route.ts',
       'app/api/recovery/propose/route.ts',
       'app/api/recovery/validate/route.ts',
     ]);
@@ -54,7 +60,16 @@ describe('the frontend stays on the MCP side of the boundary', () => {
     }
   });
 
-  it('offers no way to apply a plan', () => {
-    for (const { path, text } of sources) expect(text, path).not.toMatch(/apply_approved_plan|Approve and apply/i);
+  it('restricts plan application strictly to the dedicated server-side apply route', () => {
+    for (const { path, text } of sources) {
+      if (
+        path === 'app/api/recovery/plans/[planId]/apply/route.ts' ||
+        path === 'lib/api.ts' ||
+        path === 'lib/useRecoveryApp.ts'
+      ) {
+        continue;
+      }
+      expect(text, path).not.toMatch(/apply_approved_plan/);
+    }
   });
 });

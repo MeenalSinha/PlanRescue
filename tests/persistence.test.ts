@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { LATEST_SCHEMA_VERSION } from '../apps/mcp-server/src/db/migrations.js';
 import { startServer, type ServerHandle } from './helpers/serverProcess.js';
 import { makeTempDatabase, type TempDatabase } from './helpers/tempDatabase.js';
 
@@ -106,7 +107,7 @@ describe('data survives an application restart', () => {
     // Second run on the same path: nothing is seeded again, and MCP returns the same data.
     const second = await start();
     expect(second.logs()).toContain('Database seeding: inserted 0 events, 0 tasks');
-    expect(second.logs()).toContain('(schema v1, 6 events, 5 tasks)');
+    expect(second.logs()).toContain(`(schema v${LATEST_SCHEMA_VERSION}, 6 events, 5 tasks)`);
     const after = await readEverything(second, LEGACY); // also cross-checks the other protocol era
     expect(after.eventCount).toBe(6);
     expect(after.taskCount).toBe(5);

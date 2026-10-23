@@ -47,6 +47,7 @@ export interface RunAgentTurnOptions {
   history?: AgentChatMessage[];
   provider?: LlmProvider;
   serverConfig?: ServerConfig;
+  saveCandidates?: boolean;
 }
 
 export async function runAgentTurn(options: RunAgentTurnOptions): Promise<{
@@ -252,7 +253,37 @@ export async function runAgentTurn(options: RunAgentTurnOptions): Promise<{
   activity.push(validateCall.activity);
   const validation: ValidationResult = validateCall.data;
 
-  // 8. Generate Grounded Explanation
+  // 8. Persist candidates via save_recovery_plans if requested
+  if (options.saveCandidates) {
+    try {
+      const { saveRecoveryPlansOutputSchema } = await import('@/lib/contract');
+      const { randomUUID } = await import('node:crypto');
+      const saveRes = await callMcpTool(
+        'save_recovery_plans',
+        {
+          requestId: randomUUID(),
+          plans: planSet.candidates,
+        },
+        saveRecoveryPlansOutputSchema,
+        (out) => `Saved ${out.plans.length} plan(s) to SQLite`,
+        serverConfig,
+      );
+      activity.push(saveRes.activity);
+
+      const persistentMap = new Map(saveRes.data.plans.map((p) => [p.sourcePlanId, p]));
+      for (const candidate of planSet.candidates) {
+        const saved = persistentMap.get(candidate.planId);
+        if (saved) {
+          candidate.persistentId = saved.id;
+          candidate.savedStatus = saved.status;
+        }
+      }
+    } catch (error) {
+      console.warn('[planrescue-web] orchestrator failed to save candidates:', error);
+    }
+  }
+
+  // 9. Generate Grounded Explanation
   const explanationMessage = generateGroundedPlanExplanation(
     scenario,
     analysis,

@@ -279,13 +279,19 @@ describe.each(ERAS)('MCP client over Streamable HTTP: $label', ({ options, era, 
   const DAY = { startDeadline: '2026-10-22T00:00:00+05:30', endDeadline: '2026-10-23T00:00:00+05:30' };
   const titles = (out: TasksOutput): string[] => out.tasks.map((t) => t.title);
 
-  it('lists get_schedule and get_tasks (Phase 2) together with the three Phase 3 recovery tools through tools/list', async () => {
+  it('lists get_schedule and get_tasks (Phase 2) together with Phase 3 and Phase 6 tools through tools/list', async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       'analyze_conflicts',
+      'apply_approved_plan',
+      'approve_recovery_plan',
+      'get_action_history',
+      'get_recovery_plans',
       'get_schedule',
       'get_tasks',
       'propose_recovery_plan',
+      'reject_recovery_plan',
+      'save_recovery_plans',
       'validate_recovery_plan',
     ]);
   });
@@ -767,8 +773,10 @@ describe('server logs reflect real activity', () => {
     const logs = server.logs();
     expect(logs).toContain('Transport: Streamable HTTP');
     expect(logs).toContain(`Endpoint: ${server.url}`);
-    expect(logs).toContain('Tool registered: get_schedule, get_tasks, analyze_conflicts, propose_recovery_plan, validate_recovery_plan');
-    expect(logs).toContain(`Data source: SQLite ${server.databasePath} (schema v1, 6 events, 5 tasks)`);
+    expect(logs).toContain(
+      'Tools registered: get_schedule, get_tasks, analyze_conflicts, propose_recovery_plan, validate_recovery_plan, save_recovery_plans, get_recovery_plans, approve_recovery_plan, reject_recovery_plan, apply_approved_plan, get_action_history',
+    );
+    expect(logs).toContain(`Data source: SQLite ${server.databasePath} (schema v2, 6 events, 5 tasks)`);
     expect(logs).toContain('Database seeding: inserted 6 events, 5 tasks');
     expect(logs).toContain('Tool: get_schedule | Requested interval: [2026-10-22T12:00:00+05:30, 2026-10-22T18:00:00+05:30)');
     expect(logs).toContain('Tool: get_schedule | Matching events: 5 | Status: success');

@@ -1,8 +1,78 @@
 # Implementation report
 
-Five milestones are recorded here, newest first. Phase 5 is the AI agent integration and natural-language orchestration. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+Six milestones are recorded here, newest first. Phase 6 is the approval, safe execution, persistent recovery plans, and persistent action audit history. Phase 5 is the AI agent integration and natural-language orchestration. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
 
-## Phase 5: AI agent integration and natural-language orchestration
+## Phase 6: Approval, safe execution & persistent action history
+
+Status: implemented and verified in this environment (Windows, Node 22, npm). All 11 MCP tools operate genuinely over Streamable HTTP. Proposing or validating plans leaves SQLite 100% untouched. Only explicitly approved plans applied by the user update calendar events atomically within an ACID transaction.
+
+### 1. Pre-flight audit (Phases 0 to 5)
+
+Prior to implementing Phase 6, all earlier phases (Phase 0 foundation, Phase 1 MCP integration, Phase 2 SQLite persistence, Phase 3 Recovery Engine, Phase 4 Web UI, and Phase 5 AI agent) were audited and verified.
+- Initial backend test run: 328 tests passed across 14 test files.
+- Initial web test run: 111 tests passed across 12 test files.
+- Read-only guarantees verified: `workflow.e2e.test.tsx` and `routes.integration.test.ts` confirmed that proposing and validating candidates produces zero changes to the underlying SQLite database file.
+
+### 2. Database Migration 2 & Repositories
+
+Appended Migration 2 in `apps/mcp-server/src/db/migrations.ts` creating two new `STRICT` tables without altering existing tables:
+1. `recovery_plans`: Stores candidate recovery plans, planning window bounds, deterministic SHA-256 snapshot hash of calendar/tasks, server-generated UUIDs, and lifecycle timestamps. Unique constraint on `(request_id, source_plan_id)` ensures idempotent saves.
+2. `action_history`: Append-only audit trail logging `plan_saved`, `plan_approved`, `plan_rejected`, `plan_applied`, `plan_stale`, and `plan_apply_failed` events with timestamps, actor metadata, and detailed JSON diffs.
+
+Implemented concrete repositories:
+- `SqliteRecoveryPlanRepository` (`apps/mcp-server/src/data/sqliteRecoveryPlanRepository.ts`): Implements `RecoveryPlanRepository` interface for saving, querying, and updating plan lifecycle states with conditional expectations (`expectedStatus`).
+- `SqliteActionHistoryRepository` (`apps/mcp-server/src/data/sqliteActionHistoryRepository.ts`): Implements `ActionHistoryRepository` interface for recording and retrieving audit entries in stable chronological order.
+- `SqliteScheduleRepository.applyEventChanges`: Atomically updates event times with compare-and-swap checks on original times inside a SQLite write transaction.
+
+### 3. Six New MCP Tools
+
+Registered in `apps/mcp-server/src/server.ts` and served over Streamable HTTP:
+1. `save_recovery_plans`: Validates candidates independently, calculates SHA-256 snapshot hash, atomically saves plans, and records audit history.
+2. `get_recovery_plans`: Retrieves saved plans with query filters (`id`, `status`, `requestId`, `limit`).
+3. `approve_recovery_plan`: Checks plan status (`proposed`), verifies snapshot hash against current calendar/tasks, re-validates constraints, and transitions to `approved`.
+4. `reject_recovery_plan`: Rejects proposed plan or cancels pending approval; prevents subsequent application.
+5. `apply_approved_plan`: Only write tool permitted to mutate calendar events. Enforces `approved` status, revalidates constraints, checks snapshot hash, applies time changes atomically, marks plan `applied`, and writes audit history.
+6. `get_action_history`: Queries persistent audit entries with optional plan ID, action type, or time filters.
+
+### 4. Next.js Web Application & API Routes
+
+Added dedicated mutation API routes:
+- `POST /api/recovery/plans/[planId]/approve`
+- `POST /api/recovery/plans/[planId]/reject`
+- `POST /api/recovery/plans/[planId]/apply`
+- `GET /api/recovery/plans`
+- `GET /api/recovery/plans/[planId]`
+- `GET /api/actions/history`
+
+Updated UI components:
+- `PlanComparison.tsx`: Displays persistent plan IDs, lifecycle status badges (`PROPOSED`, `APPROVED`, `APPLIED`, `REJECTED`, `STALE`), Approve and Reject buttons, and an explicit calendar update confirmation modal before calling apply.
+- `ActionHistoryPanel.tsx`: New dedicated collapsible panel displaying real audit records, action types, timestamps, actors, and detailed event before/after changes.
+- `useRecoveryApp.ts`: Hook managing plan lifecycle state, tracking tool calls in the activity roster, refreshing dashboard upon apply, and keeping audit trail in sync.
+
+### 5. Verification results
+
+All tests executed against real compiled code and live MCP servers:
+
+| Command | Results |
+| --- | --- |
+| `npm run check` (end to end CI gate) | Passed, exit 0 |
+| Backend suite (`npm test`) | **339 passed in 16 files (100%)** |
+| Web suite (`npm run test:web`) | **111 passed in 12 files (100%)** |
+| Total test suite | **450 passed, 0 failed** |
+| `tests/phase6-migration.test.ts` | 3 passed (table creation, v1 upgrade without data loss, idempotency) |
+| `tests/phase6-lifecycle.test.ts` | 8 passed (save, idempotency, approve, reject, unapproved reject, atomic apply, stale detection, restart persistence) |
+| `apps/web/tests/architecture.test.ts` | 5 passed (boundary checks, 11 allowed routes, apply tool restriction) |
+| `apps/web/tests/workflow.e2e.test.tsx` | 2 passed (full user workflow over live MCP server) |
+| `apps/web/tests/routes.integration.test.ts` | 14 passed (all API route handlers over live MCP server) |
+
+### 6. Demonstration Scenario
+
+- User disruption: Team Meeting runs 40 minutes late with Doctor's Appointment protected.
+- Candidate plans generated by the Recovery Engine and saved with persistent IDs (`save_recovery_plans`).
+- User explicitly clicks **Approve plan** (`approve_recovery_plan`). Plan status updates to `approved`; calendar events remain 100% unchanged.
+- User clicks **Apply approved plan**, reviews modal summary, and confirms execution.
+- Server validates freshness, applies changes transactionally (`apply_approved_plan`), shifts Lunch Break and Project Review, updates plan to `applied`, and refreshes the timeline.
+- Server and web app restarted; retrieved plan remains `applied`, event times remain updated, and action history displays both `plan_approved` and `plan_applied` entries.
 
 Status: implemented and verified in this environment (Windows, Node 22, npm). All 5 existing MCP tools remain genuine and read-only. Structured form remains fully functional as a manual alternative.
 

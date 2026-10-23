@@ -50,6 +50,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       date: parsed.data.date,
       window: parsed.data.window,
       history: parsed.data.history,
+      saveCandidates: parsed.data.saveCandidates,
     });
     return ok(result.data, result.activity);
   } catch (error) {

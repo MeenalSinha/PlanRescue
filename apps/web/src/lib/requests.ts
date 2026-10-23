@@ -56,6 +56,7 @@ export const proposeRequestSchema = z
   .strictObject({
     ...scenarioShape,
     preferences: z.strictObject({ optimizeFor: z.enum(RANKING_PREFERENCES).optional() }).optional(),
+    saveCandidates: z.boolean().optional(),
   })
   .superRefine(windowOrdering);
 export type ProposeRequest = z.infer<typeof proposeRequestSchema>;

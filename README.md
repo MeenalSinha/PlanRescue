@@ -6,28 +6,35 @@ PlanRescue is a consequence-aware schedule recovery agent. When a meeting runs l
 
 This repository is the submission for the **Amazon Developer Hackathon 2026, Alexa+ track**. That track requires a genuine MCP server over the Streamable HTTP transport, so the first thing built here is exactly that: a real MCP server, exercised by a real MCP client.
 
-## Current scope (Phase 0 to Phase 5)
+## Current scope (Phase 0 to Phase 6)
 
 Implemented and verified:
 
 - A TypeScript project foundation with scripts, environment configuration, tests and CI.
 - A real MCP server built on the official TypeScript SDK (v2), served over Streamable HTTP.
-- **A persistent SQLite data layer (Phase 2).** Calendar events and tasks live in two separate tables in one local database file. The schema is versioned, created automatically at startup and seeded with a deterministic sample day (22 October 2026, Asia/Kolkata). Data survives restarts.
-- Two read-only MCP tools, both backed by SQLite through repository interfaces:
+- **A persistent SQLite data layer (Phase 2 & Phase 6).** Calendar events, tasks, persistent recovery plans, and append-only action audit history live in one local SQLite database file (`recovery_plans` and `action_history` tables via Migration 2). The schema is versioned, created automatically at startup and seeded with a deterministic sample day (22 October 2026, Asia/Kolkata). Data survives restarts.
+- **Eleven genuine MCP tools**:
   - `get_schedule`: calendar events overlapping a time interval.
-  - `get_tasks`: tasks with deadlines, estimated durations, priorities and statuses, with optional filters.
-- **A deterministic Recovery Engine (Phase 3)** behind three more read-only MCP tools: `analyze_conflicts`, `propose_recovery_plan` and `validate_recovery_plan`. Given an event that ran late, it finds the conflicts, generates rescheduling candidates with plain TypeScript logic (no LLM, no external API), and re-validates every candidate with an independent validator. See [Phase 3: the Recovery Engine](#phase-3-the-recovery-engine).
-- **A web interface (Phase 4)** in `apps/web`: a Next.js app that shows the real calendar and tasks, lets you report an event overrun, and walks through conflict analysis, plan comparison and independent validation. It reaches the backend only through the official MCP client. See [Phase 4: the web interface](#phase-4-the-web-interface).
-- **AI Agent Integration & Natural-Language Orchestration (Phase 5)**: A bounded, tool-using AI agent that accepts free-form natural-language disruption requests, grounds them against real calendar events and tasks retrieved through MCP, extracts structured intent with strict Zod validation, asks for clarification when ambiguous or incomplete, orchestrates `analyze_conflicts`, `propose_recovery_plan`, and `validate_recovery_plan` via MCP, produces grounded explanations, and presents recommendations directly in the web UI while keeping the structured manual controls fully functional as an alternative.
-- Strict input validation, structured output plus a readable text rendering, and logs that show what actually happened.
-- Comprehensive test coverage across backend, persistence, Recovery Engine, Next.js web application, agent intent extraction, agent security guards, agent orchestration, and real MCP integration over Streamable HTTP.
+  - `get_tasks`: tasks with deadlines, estimated durations, priorities and statuses.
+  - `analyze_conflicts`: deterministic conflict analysis for a reported disruption.
+  - `propose_recovery_plan`: deterministic multi-candidate recovery planning.
+  - `validate_recovery_plan`: independent constraint validation.
+  - `save_recovery_plans`: persistent storage of candidate plans with SHA-256 source state fingerprints.
+  - `get_recovery_plans`: filterable retrieval of persisted recovery plans by ID, status, or request ID.
+  - `approve_recovery_plan`: server-enforced explicit approval workflow with state-machine guards.
+  - `reject_recovery_plan`: rejection or cancellation of pending plans.
+  - `apply_approved_plan`: atomic, transactional schedule updates for approved plans with stale-fingerprint detection. Only tool permitted to mutate calendar events.
+  - `get_action_history`: persistent chronological audit trail of all lifecycle events.
+- **A deterministic Recovery Engine (Phase 3)** behind plain TypeScript logic (no LLM, no external API), and re-validates every candidate with an independent validator.
+- **A web interface (Phase 4 & Phase 6)** in `apps/web`: Next.js web application offering visual schedule comparison, independent validation, explicit approval & rejection actions, a confirmation modal for atomic plan application, and an action history timeline.
+- **AI Agent Integration & Natural-Language Orchestration (Phase 5)**: Bounded, tool-using AI agent that accepts free-form natural-language disruption requests, grounds them against real calendar events and tasks retrieved through MCP, extracts structured intent with strict Zod validation, asks for clarification when ambiguous or incomplete, orchestrates read-only MCP tools, and produces grounded explanations. Write-capable tools are never exposed autonomously to the LLM.
+- **Safety & Atomic Execution**: Generating or validating a plan NEVER alters calendar events. Only an explicit user approval followed by a separate user confirmation on the frontend invokes `apply_approved_plan`, which atomically updates event times in a SQLite transaction and logs an immutable audit trail entry.
+- Comprehensive test coverage across backend, persistence, Recovery Engine, Next.js web application, agent intent extraction, agent security guards, agent orchestration, Phase 6 migration, Phase 6 lifecycle MCP tools, and real MCP integration over Streamable HTTP (450 total tests).
 
-Planned, not implemented (do not read the list below as features):
-
-- Applying a recovery plan: nothing writes to the calendar. Plans are proposals; there is no approval workflow, no `apply_approved_plan` tool and no stored plan history (Phase 6)
+Planned, not implemented:
 - Disruption types other than `event_overrun` (cancellations, new urgent tasks, travel delays)
-- Tools that create, change or delete events and tasks (the database is read-only through MCP today)
-- Google Calendar integration, public deployment
+- Google Calendar API or Microsoft Outlook integration (execution modifies local PlanRescue SQLite calendar only)
+- Public cloud multi-tenant deployment with external user auth
 
 ## Technology
 

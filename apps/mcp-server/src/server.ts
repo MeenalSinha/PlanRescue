@@ -5,7 +5,18 @@ import { registerGetScheduleTool } from './tools/getSchedule.js';
 import { registerGetTasksTool } from './tools/getTasks.js';
 import { registerProposeRecoveryPlanTool } from './tools/proposeRecoveryPlan.js';
 import { registerValidateRecoveryPlanTool } from './tools/validateRecoveryPlan.js';
-import type { ScheduleRepository, TaskRepository } from './types.js';
+import { registerSaveRecoveryPlansTool } from './tools/saveRecoveryPlans.js';
+import { registerGetRecoveryPlansTool } from './tools/getRecoveryPlans.js';
+import { registerApproveRecoveryPlanTool } from './tools/approveRecoveryPlan.js';
+import { registerRejectRecoveryPlanTool } from './tools/rejectRecoveryPlan.js';
+import { registerApplyApprovedPlanTool } from './tools/applyApprovedPlan.js';
+import { registerGetActionHistoryTool } from './tools/getActionHistory.js';
+import type {
+  ScheduleRepository,
+  TaskRepository,
+  RecoveryPlanRepository,
+  ActionHistoryRepository,
+} from './types.js';
 
 export const SERVER_NAME = 'planrescue-mcp-server';
 /** Keep in sync with package.json (enforced by tests/server-meta.test.ts). */
@@ -16,6 +27,10 @@ export interface ServerDeps {
   repository: ScheduleRepository;
   /** Tasks and deadlines. */
   taskRepository: TaskRepository;
+  /** Persistent recovery plans. */
+  recoveryPlanRepository: RecoveryPlanRepository;
+  /** Append-only action history. */
+  actionHistoryRepository: ActionHistoryRepository;
   logger: Logger;
 }
 
@@ -39,18 +54,51 @@ export function buildPlanRescueServer(deps: ServerDeps): BuiltServer {
         'events occupy fixed time slots, tasks are work that must be fitted around them. ' +
         'Use analyze_conflicts to find overlaps and deadline risks, optionally for a hypothetical event_overrun (an event that ran late). ' +
         'Use propose_recovery_plan to get deterministic, independently validated rescheduling candidates for such an overrun, and validate_recovery_plan to re-verify any candidate against the current calendar. ' +
-        'The Recovery Engine is deterministic code: plans are computed and validated, never invented. All three recovery tools are read-only proposals; nothing is written to the calendar. ' +
-        'Immovable, critical and user-protected events are never rescheduled. Task deadlines are assessed as aggregate capacity, not as assigned time slots. ' +
+        'Candidates can be persisted via save_recovery_plans and inspected via get_recovery_plans. ' +
+        'Saved recovery plans follow a strict lifecycle: proposed -> approved -> applied (or rejected/stale). ' +
+        'Plans are approved via approve_recovery_plan and rejected via reject_recovery_plan. ' +
+        'Only explicitly approved plans can be executed against the SQLite calendar via apply_approved_plan. ' +
+        'Generating, validating, or approving plans NEVER modifies calendar events; only apply_approved_plan updates event times atomically. ' +
+        'Audit history of all plan lifecycle transitions is recorded and retrievable via get_action_history. ' +
+        'Immovable, critical and user-protected events are never rescheduled. ' +
         'All timestamps must be ISO 8601 with an explicit UTC offset.',
     },
   );
-  const recoveryDeps = { repository: deps.repository, taskRepository: deps.taskRepository, logger: deps.logger };
+
+  const recoveryDeps = {
+    repository: deps.repository,
+    taskRepository: deps.taskRepository,
+    logger: deps.logger,
+  };
+
+  const lifecycleDeps = {
+    repository: deps.repository,
+    taskRepository: deps.taskRepository,
+    recoveryPlanRepository: deps.recoveryPlanRepository,
+    actionHistoryRepository: deps.actionHistoryRepository,
+    logger: deps.logger,
+  };
+
   const toolNames = [
     registerGetScheduleTool(server, { repository: deps.repository, logger: deps.logger }),
     registerGetTasksTool(server, { repository: deps.taskRepository, logger: deps.logger }),
     registerAnalyzeConflictsTool(server, recoveryDeps),
     registerProposeRecoveryPlanTool(server, recoveryDeps),
     registerValidateRecoveryPlanTool(server, recoveryDeps),
+    registerSaveRecoveryPlansTool(server, lifecycleDeps),
+    registerGetRecoveryPlansTool(server, { recoveryPlanRepository: deps.recoveryPlanRepository, logger: deps.logger }),
+    registerApproveRecoveryPlanTool(server, lifecycleDeps),
+    registerRejectRecoveryPlanTool(server, {
+      recoveryPlanRepository: deps.recoveryPlanRepository,
+      actionHistoryRepository: deps.actionHistoryRepository,
+      logger: deps.logger,
+    }),
+    registerApplyApprovedPlanTool(server, lifecycleDeps),
+    registerGetActionHistoryTool(server, {
+      actionHistoryRepository: deps.actionHistoryRepository,
+      logger: deps.logger,
+    }),
   ];
+
   return { server, toolNames };
 }

@@ -1,7 +1,7 @@
 import type { Db } from '../db/migrations.js';
 import { InvalidQueryError } from '../lib/errors.js';
-import { validateRange } from '../lib/time.js';
-import type { ScheduleEvent, ScheduleRepository, TimeRange } from '../types.js';
+import { toEpochMs, validateRange } from '../lib/time.js';
+import type { EventChangeUpdate, ScheduleEvent, ScheduleRepository, TimeRange } from '../types.js';
 
 interface EventRow {
   id: string;
@@ -21,14 +21,22 @@ interface EventRow {
  * the offset-bearing text, which keeps results correct for any UTC offset.
  */
 export class SqliteScheduleRepository implements ScheduleRepository {
+  private readonly db: Db;
   private readonly overlapping;
+  private readonly updateEventStmt;
 
   constructor(db: Db) {
+    this.db = db;
     this.overlapping = db.prepare<[number, number], EventRow>(
       `SELECT id, title, start_time, end_time, priority, movable, category, notes
          FROM calendar_events
         WHERE start_ms < ? AND end_ms > ?
         ORDER BY start_ms, end_ms, id`,
+    );
+    this.updateEventStmt = db.prepare(
+      `UPDATE calendar_events
+          SET start_time = ?, end_time = ?, start_ms = ?, end_ms = ?
+        WHERE id = ? AND start_time = ? AND end_time = ?`,
     );
   }
 
@@ -50,4 +58,33 @@ export class SqliteScheduleRepository implements ScheduleRepository {
       ...(row.notes !== null ? { notes: row.notes } : {}),
     }));
   }
+
+  async applyEventChanges(changes: EventChangeUpdate[]): Promise<void> {
+    const applyTx = this.db.transaction(() => {
+      for (const change of changes) {
+        const startMs = toEpochMs(change.proposedStartTime);
+        const endMs = toEpochMs(change.proposedEndTime);
+        if (endMs <= startMs) {
+          throw new Error(`Proposed times for event ${change.eventId} are inverted or zero length`);
+        }
+        const result = this.updateEventStmt.run(
+          change.proposedStartTime,
+          change.proposedEndTime,
+          startMs,
+          endMs,
+          change.eventId,
+          change.originalStartTime,
+          change.originalEndTime,
+        );
+        if (result.changes !== 1) {
+          throw new Error(
+            `Failed to update event ${change.eventId}: state mismatch (event moved or deleted since plan was created)`,
+          );
+        }
+      }
+    });
+
+    applyTx();
+  }
 }
+

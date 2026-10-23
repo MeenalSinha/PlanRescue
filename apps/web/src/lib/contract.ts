@@ -171,6 +171,8 @@ export type PlanChange = z.infer<typeof planChangeSchema>;
 
 export const recoveryPlanSchema = z.looseObject({
   planId: z.string(),
+  persistentId: z.string().optional(),
+  savedStatus: z.enum(['proposed', 'approved', 'rejected', 'applied', 'stale']).optional(),
   strategy: z.enum(['minimal_disruption', 'buffered_transitions', 'priority_first']),
   summary: z.string(),
   startTime: z.string(),
@@ -222,3 +224,111 @@ export const planSetSchema = z.looseObject({
   summary: z.string(),
 });
 export type RecoveryPlanSet = z.infer<typeof planSetSchema>;
+
+// Phase 6 schemas
+export const saveRecoveryPlansOutputSchema = z.looseObject({
+  requestId: z.string(),
+  count: z.number(),
+  plans: z.array(
+    z.looseObject({
+      id: z.string(),
+      sourcePlanId: z.string(),
+      requestId: z.string(),
+      status: z.enum(['proposed', 'approved', 'rejected', 'applied', 'stale']),
+      strategy: z.string(),
+      score: z.number(),
+      createdAt: z.string(),
+      isValid: z.boolean(),
+      summary: z.string(),
+    }),
+  ),
+  message: z.string(),
+});
+export type SaveRecoveryPlansOutput = z.infer<typeof saveRecoveryPlansOutputSchema>;
+
+export const approveRecoveryPlanOutputSchema = z.looseObject({
+  planId: z.string(),
+  status: z.literal('approved'),
+  approvedAt: z.string(),
+  strategy: z.string(),
+  summary: z.string(),
+  message: z.string(),
+});
+export type ApproveRecoveryPlanOutput = z.infer<typeof approveRecoveryPlanOutputSchema>;
+
+export const rejectRecoveryPlanOutputSchema = z.looseObject({
+  planId: z.string(),
+  status: z.literal('rejected'),
+  rejectedAt: z.string(),
+  strategy: z.string(),
+  message: z.string(),
+});
+export type RejectRecoveryPlanOutput = z.infer<typeof rejectRecoveryPlanOutputSchema>;
+
+export const applyApprovedPlanOutputSchema = z.looseObject({
+  planId: z.string(),
+  status: z.literal('applied'),
+  appliedAt: z.string(),
+  strategy: z.string(),
+  changesCount: z.number(),
+  changes: z.array(
+    z.looseObject({
+      eventId: z.string(),
+      title: z.string(),
+      previousStartTime: z.string(),
+      previousEndTime: z.string(),
+      newStartTime: z.string(),
+      newEndTime: z.string(),
+    }),
+  ),
+  message: z.string(),
+});
+export type ApplyApprovedPlanOutput = z.infer<typeof applyApprovedPlanOutputSchema>;
+
+export const getRecoveryPlansOutputSchema = z.looseObject({
+  count: z.number(),
+  plans: z.array(
+    z.looseObject({
+      id: z.string(),
+      requestId: z.string(),
+      sourcePlanId: z.string(),
+      status: z.enum(['proposed', 'approved', 'rejected', 'applied', 'stale']),
+      plan: recoveryPlanSchema,
+      planningStart: z.string(),
+      planningEnd: z.string(),
+      snapshotHash: z.string(),
+      createdAt: z.string(),
+      updatedAt: z.string(),
+      approvedAt: z.string().optional(),
+      rejectedAt: z.string().optional(),
+      appliedAt: z.string().optional(),
+    }),
+  ),
+});
+export type GetRecoveryPlansOutput = z.infer<typeof getRecoveryPlansOutputSchema>;
+
+export const actionHistoryItemSchema = z.looseObject({
+  id: z.string(),
+  recoveryPlanId: z.string().optional(),
+  actionType: z.enum([
+    'plan_saved',
+    'plan_approved',
+    'plan_rejected',
+    'approval_cancelled',
+    'plan_applied',
+    'plan_stale',
+    'apply_failed',
+  ]),
+  occurredAt: z.string(),
+  actor: z.string(),
+  summary: z.string(),
+  details: z.record(z.string(), z.any()),
+});
+export type ActionHistoryItem = z.infer<typeof actionHistoryItemSchema>;
+
+export const getActionHistoryOutputSchema = z.looseObject({
+  count: z.number(),
+  entries: z.array(actionHistoryItemSchema),
+});
+export type GetActionHistoryOutput = z.infer<typeof getActionHistoryOutputSchema>;
+

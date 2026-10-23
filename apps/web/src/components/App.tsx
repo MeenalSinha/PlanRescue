@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { longDate } from '@/lib/time';
 import { useRecoveryApp } from '@/lib/useRecoveryApp';
+import { ActionHistoryPanel } from './ActionHistoryPanel';
 import { ActivityPanel, ConnectionBadge } from './ActivityPanel';
 import { AgentChat } from './AgentChat';
 import { AnalysisPanel } from './AnalysisPanel';
@@ -15,7 +16,7 @@ import { Notice, SectionCard, Spinner } from './ui';
 import { rangeLabel } from '@/lib/time';
 import type { DashboardData } from '@/lib/api';
 
-type View = 'plan' | 'activity';
+type View = 'plan' | 'activity' | 'history';
 
 function dayItems(data: DashboardData): TimelineItem[] {
   return data.events.map((e) => ({
@@ -60,6 +61,14 @@ export function App() {
               </button>
             </li>
             <li>
+              <button type="button" className="nav-btn" aria-current={view === 'history' ? 'page' : undefined} onClick={() => {
+                setView('history');
+                void app.loadActionHistory();
+              }}>
+                History
+              </button>
+            </li>
+            <li>
               <button type="button" className="nav-btn" aria-current={view === 'activity' ? 'page' : undefined} onClick={() => setView('activity')}>
                 Activity
               </button>
@@ -79,6 +88,10 @@ export function App() {
           {view === 'activity' ? (
             <SectionCard title="Activity" subtitle="Every MCP tool call the web server made for you in this session.">
               <ActivityPanel log={app.log} pending={app.pending} connection={app.connection} full />
+            </SectionCard>
+          ) : view === 'history' ? (
+            <SectionCard title="Audit Trail" subtitle="Persistent action history recorded in SQLite across all sessions.">
+              <ActionHistoryPanel history={app.actionHistory} onRefresh={() => void app.loadActionHistory()} />
             </SectionCard>
           ) : (
             <>
@@ -239,8 +252,12 @@ export function App() {
                           utcOffset={data.utcOffset}
                           selectedPlanId={app.selectedPlanId}
                           validations={app.validations}
+                          executingPlanId={app.executingPlanId}
                           onSelect={app.setSelectedPlanId}
                           onVerify={(plan) => void app.verifyPlan(plan)}
+                          onApprove={app.approvePlan}
+                          onReject={app.rejectPlan}
+                          onApply={app.applyPlan}
                         />
                       ) : null}
                     </SectionCard>

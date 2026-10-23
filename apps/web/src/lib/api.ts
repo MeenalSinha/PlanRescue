@@ -1,7 +1,18 @@
 /** Envelope every API route returns, and the activity record behind the MCP activity panel. */
 import type { ConflictAnalysis, RecoveryPlanSet, ScheduleEvent, Task, ValidationResult } from './contract';
 
-export type ToolName = 'get_schedule' | 'get_tasks' | 'analyze_conflicts' | 'propose_recovery_plan' | 'validate_recovery_plan';
+export type ToolName =
+  | 'get_schedule'
+  | 'get_tasks'
+  | 'analyze_conflicts'
+  | 'propose_recovery_plan'
+  | 'validate_recovery_plan'
+  | 'save_recovery_plans'
+  | 'get_recovery_plans'
+  | 'approve_recovery_plan'
+  | 'reject_recovery_plan'
+  | 'apply_approved_plan'
+  | 'get_action_history';
 
 /** One real MCP tool call made by the server on behalf of the browser. */
 export interface ToolActivity {
@@ -60,3 +71,9 @@ export interface DashboardData {
 export type AnalyzeData = ConflictAnalysis;
 export type ProposeData = RecoveryPlanSet;
 export type ValidateData = ValidationResult;
+
+export type ApproveData = import('./contract').ApproveRecoveryPlanOutput;
+export type RejectData = import('./contract').RejectRecoveryPlanOutput;
+export type ApplyData = import('./contract').ApplyApprovedPlanOutput;
+export type HistoryData = import('./contract').GetActionHistoryOutput;
+

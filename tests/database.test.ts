@@ -34,11 +34,21 @@ describe('fresh database initialization', () => {
     track(db);
     expect(schemaVersion).toBe(LATEST_SCHEMA_VERSION);
     expect(getSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
-    expect(tableNames(db)).toEqual(['calendar_events', 'tasks']);
+    expect(tableNames(db)).toEqual(['action_history', 'calendar_events', 'recovery_plans', 'tasks']);
     const indexes = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name").all() as { name: string }[]).map(
       (r) => r.name,
     );
-    expect(indexes).toEqual(['idx_calendar_events_range', 'idx_tasks_deadline', 'idx_tasks_status_deadline']);
+    expect(indexes).toEqual([
+      'idx_action_history_action_type',
+      'idx_action_history_occurred_at',
+      'idx_action_history_plan_id',
+      'idx_calendar_events_range',
+      'idx_recovery_plans_request_id',
+      'idx_recovery_plans_status',
+      'idx_recovery_plans_updated_at',
+      'idx_tasks_deadline',
+      'idx_tasks_status_deadline',
+    ]);
     expect(seeded).toEqual({ eventsInserted: seedEvents.length, tasksInserted: seedTasks.length });
   });
 
@@ -77,7 +87,7 @@ describe('reopening and repeatability', () => {
     const again = initializeDatabase(tmp.path);
     track(again.db);
     expect(again.schemaVersion).toBe(LATEST_SCHEMA_VERSION);
-    expect(tableNames(again.db)).toEqual(['calendar_events', 'tasks']);
+    expect(tableNames(again.db)).toEqual(['action_history', 'calendar_events', 'recovery_plans', 'tasks']);
   });
 
   it('running migrations repeatedly is a no-op', () => {
