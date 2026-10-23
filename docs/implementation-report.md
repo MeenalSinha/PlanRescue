@@ -1,6 +1,79 @@
 # Implementation report
 
-Four milestones are recorded here, newest first. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+Five milestones are recorded here, newest first. Phase 5 is the AI agent integration and natural-language orchestration. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+
+## Phase 5: AI agent integration and natural-language orchestration
+
+Status: implemented and verified in this environment (Windows, Node 22, npm). All 5 existing MCP tools remain genuine and read-only. Structured form remains fully functional as a manual alternative.
+
+### 1. Pre-flight audit (Phases 0 to 4)
+
+Prior to implementing Phase 5, an audit of the entire Phase 0–4 codebase was executed. Four Windows/cross-platform test and lifecycle issues were diagnosed and repaired:
+
+1. **Child process graceful shutdown on Windows (`tests/helpers/serverProcess.ts` & `apps/mcp-server/src/index.ts`)**: On Windows, `process.kill(child.pid, 'SIGTERM')` unconditionally terminates child processes immediately without firing `process.on('SIGTERM')`, causing SQLite file handles to remain locked (`EBUSY`). Configured `stdio: ['pipe', 'pipe', 'pipe', 'ipc']` in `serverProcess.ts` and IPC signal listeners in `apps/mcp-server/src/index.ts` so `child.send('SIGTERM')` cleanly triggers WAL checkpointing and database closure.
+2. **SQLite file cleanup lock in `tests/database.test.ts`**: The test kept connection `b` open while invoking `other.cleanup()`, causing `EBUSY: resource busy or locked, unlink` on Windows. Added `b.close()` before cleanup.
+3. **Path separator normalization in `tests/config.test.ts`**: The test asserted POSIX `/var/lib/...` which failed when resolved on Windows drive letters. Updated with `path.resolve('/var/lib/planrescue/data.sqlite')`.
+4. **Path slash normalization in `apps/web/tests/architecture.test.ts`**: Windows backslashes (`\`) broke path matching in the architectural boundary test. Added slash normalization.
+
+Following these fixes, the entire pre-flight suite passed with 100% integrity (328 backend tests, 80 web tests).
+
+### 2. Phase 5 Architecture & Provider Integration
+
+Phase 5 implements a bounded, tool-using AI agent architecture:
+- **LLM Provider**: Official TypeScript SDK `openai` (`^7.43.0`).
+- **Adapter**: `OpenAiProvider` in `apps/web/src/lib/agent/provider.ts` utilizing JSON schema mode (`response_format: { type: 'json_object' }`). Exposes the `LlmProvider` interface for dependency injection.
+- **Intent Extraction**: Strict Zod schema (`rawExtractedIntentSchema` in `apps/web/src/lib/agent/schemas.ts`) validating `status` (`supported`, `needs_clarification`, `unsupported`), target `eventId`, `overrunMinutes`, `protectedEventIds`, and `preference`.
+- **Grounding Against Real Data**: Before interpreting user intent, the orchestrator retrieves actual events and tasks via MCP (`get_schedule`, `get_tasks`). The target event ID and protected event IDs are validated against this real dataset. Hallucinated event IDs are rejected and routed to clarification.
+- **MCP Tool Orchestration**: Server-side bounded workflow (`src/lib/agent/orchestrator.ts`) calling the allowlisted MCP tools in sequence:
+  1. `get_schedule` & `get_tasks` (grounding context)
+  2. Intent extraction & validation
+  3. `analyze_conflicts`
+  4. `propose_recovery_plan`
+  5. `validate_recovery_plan`
+- **Grounded Explanations**: Summary text (`src/lib/agent/explanations.ts`) is generated strictly from the actual returned conflict counts, candidate changes, and independent validation results.
+- **Web UI (`AgentChat.tsx`)**: Conversational interface with suggested prompt pills, typing indicator, status badges, and synchronized state with `AnalysisPanel`, `PlanComparison`, `ValidationPanel`, and `ActivityPanel`. The original `DisruptionForm` is kept directly below for manual control.
+
+### 3. Verification results
+
+All tests run against real compiled code and live MCP servers:
+
+| Command | Results |
+| --- | --- |
+| `npm run check` (end to end) | Passed, exit 0 |
+| Backend suite (`npm test`) | 328 passed in 14 files |
+| Web suite (`npm run test:web`) | 111 passed in 12 files |
+| Total tests | **439 passed, 0 failed** |
+| `apps/web/tests/agent.intent.test.ts` | 10 passed (extraction, ambiguities, bounds) |
+| `apps/web/tests/agent.security.test.ts` | 5 passed (payload limits, history limits, prompt injection, fake ID rejection) |
+| `apps/web/tests/agent.orchestration.test.ts` | 4 passed (bounded sequence, clarification stop, infeasible handling) |
+| `apps/web/tests/agent.component.test.tsx` | 8 passed (AgentChat rendering, pills, submit, loading, badges, errors) |
+| `apps/web/tests/agent.integration.test.ts` | 4 passed (real MCP server over Streamable HTTP, full recovery, clarification, infeasibility, untouched DB hash) |
+| `npm run test:e2e` | 2 passed (Next.js production build + MCP server full E2E) |
+
+### 4. Real MCP Integration Demonstration
+
+In `apps/web/tests/agent.integration.test.ts`, the real MCP server was started as a child process with an isolated temporary SQLite database populated with the seeded October 22, 2026 workday.
+
+The workflow executed:
+1. User prompt: *"My team meeting is running 40 minutes late. Fix my afternoon, but don't move my doctor's appointment."*
+2. Real `get_schedule` and `get_tasks` executed via MCP.
+3. Extracted intent matched `evt-001` (Team Meeting), 40 minute overrun, `evt-005` (Doctor's Appointment) protected.
+4. Real `analyze_conflicts` called: 1 new conflict (Lunch Break overlap for 40 min).
+5. Real `propose_recovery_plan` called: 1 candidate (`minimal_disruption`, score 555), shifting Lunch Break, Project Review, and Focus Work later while preserving Doctor's Appointment at 16:30 and Project Deadline Work at 18:00.
+6. Real `validate_recovery_plan` called: candidate independently validated as valid.
+7. Explanatory message grounded in actual times and checks.
+8. Database fingerprint check: Every table in SQLite verified byte-for-byte identical before and after.
+
+### 5. Known limitations
+
+- Only `event_overrun` is supported as a disruption type.
+- Strictly read-only: no automatic calendar updates, no approval write tool (Phase 6).
+- If `OPENAI_API_KEY` is not set, natural language features prompt the user to use the manual controls.
+- Single user, single calendar, single timezone (`Asia/Kolkata`).
+
+### 6. Readiness for Phase 6
+
+Phase 5 is complete. The system now seamlessly connects natural-language user intent to deterministic Recovery Engine proposals and independent validation through real MCP tools. The application is completely ready for Phase 6: approval workflow, controlled execution of approved schedule changes, and persistent action history.
 
 ## Phase 4: web interface (Next.js over the real MCP server)
 

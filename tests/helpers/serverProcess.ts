@@ -95,7 +95,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
       DATABASE_PATH: databasePath,
       ...(options.env ?? {}),
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   child.stdout?.on('data', (chunk: Buffer) => (output += chunk.toString()));
   child.stderr?.on('data', (chunk: Buffer) => (output += chunk.toString()));
@@ -131,7 +131,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
           clearTimeout(force);
           finish({ code, signal });
         });
-        child.kill('SIGTERM');
+        if (child.connected) {
+          child.send('SIGTERM');
+        } else {
+          child.kill('SIGTERM');
+        }
       }),
   };
 }

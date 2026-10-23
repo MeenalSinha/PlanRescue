@@ -13,13 +13,14 @@
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:unit": "vitest run tests/lib.test.ts tests/architecture.test.ts tests/mcpClient.test.ts tests/app.component.test.tsx",
-    "test:integration": "vitest run tests/routes.integration.test.ts",
+    "test:unit": "vitest run tests/lib.test.ts tests/architecture.test.ts tests/mcpClient.test.ts tests/app.component.test.tsx tests/agent.intent.test.ts tests/agent.security.test.ts tests/agent.orchestration.test.ts tests/agent.component.test.tsx",
+    "test:integration": "vitest run tests/routes.integration.test.ts tests/agent.integration.test.ts",
     "test:e2e": "vitest run tests/workflow.e2e.test.tsx tests/http.e2e.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",
     "next": "^16.4.2",
+    "openai": "^7.43.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zod": "^4.6.7"

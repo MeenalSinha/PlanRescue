@@ -14,7 +14,7 @@ function files(dir: string): string[] {
 
 describe('the frontend stays on the MCP side of the boundary', () => {
   const stripComments = (t: string): string => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  const sources = files(SRC).map((p) => ({ path: p.slice(SRC.length + 1), text: stripComments(readFileSync(p, 'utf8')) }));
+  const sources = files(SRC).map((p) => ({ path: p.slice(SRC.length + 1).replace(/\\/g, '/'), text: stripComments(readFileSync(p, 'utf8')) }));
 
   it('never imports SQLite, the MCP server code or the Recovery Engine', () => {
     for (const { path, text } of sources) {
@@ -29,14 +29,22 @@ describe('the frontend stays on the MCP side of the boundary', () => {
     expect(users).toEqual(['lib/mcpClient.ts']);
   });
 
-  it('exposes only the four allow-listed routes, each calling a fixed tool', () => {
+  it('exposes only the five allow-listed routes, each calling fixed tools', () => {
     const routes = sources.filter((s) => s.path.startsWith('app/api/')).map((s) => s.path.replace(/\\/g, '/')).sort();
-    expect(routes).toEqual(['app/api/dashboard/route.ts', 'app/api/recovery/analyze/route.ts', 'app/api/recovery/propose/route.ts', 'app/api/recovery/validate/route.ts']);
-    for (const r of sources.filter((s) => s.path.startsWith('app/api/'))) {
+    expect(routes).toEqual([
+      'app/api/agent/turn/route.ts',
+      'app/api/dashboard/route.ts',
+      'app/api/recovery/analyze/route.ts',
+      'app/api/recovery/propose/route.ts',
+      'app/api/recovery/validate/route.ts',
+    ]);
+    for (const r of sources.filter((s) => s.path.startsWith('app/api/') && !s.path.includes('agent/turn'))) {
       const calls = [...r.text.matchAll(/callMcpTool\(/g)].map((m) => r.text.slice(m.index! + m[0].length).trimStart()[0]);
       expect(calls.length, r.path).toBeGreaterThan(0);
       for (const first of calls) expect(first, r.path).toMatch(/['"]/);
     }
+    const agentRoute = sources.find((s) => s.path === 'app/api/agent/turn/route.ts');
+    expect(agentRoute?.text).toMatch(/runAgentTurn\(/);
   });
 
   it('sends no server configuration to the browser', () => {

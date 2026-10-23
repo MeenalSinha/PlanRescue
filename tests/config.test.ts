@@ -48,7 +48,7 @@ describe('parseConfig', () => {
 
     it('keeps an absolute path as given', () => {
       expect(parseConfig({ DATABASE_PATH: '/var/lib/planrescue/plan.sqlite' }, '/srv/app').databasePath).toBe(
-        '/var/lib/planrescue/plan.sqlite',
+        resolve('/var/lib/planrescue/plan.sqlite'),
       );
     });
 

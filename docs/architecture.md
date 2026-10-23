@@ -196,8 +196,61 @@ Route handler -> JSON envelope { ok, data | error, activity[] } -> Browser state
 
 ### Seams left for later phases
 
-- Phase 5 can add a natural-language entry point that produces the same structured scenario the form produces, reusing the routes and screens.
 - Phase 6 can add approval and apply routes beside the existing ones and a new write-capable MCP tool; the plan-comparison screen already identifies a selected candidate.
+
+## Phase 5: AI agent integration and natural-language orchestration
+
+### Request flow
+
+```
+Browser (AgentChat component, apps/web/src/components/AgentChat.tsx)
+   │  fetch: POST /api/agent/turn (message, planningWindow, conversation history)
+   ▼
+Next.js Agent route handler (apps/web/src/app/api/agent/turn/route.ts)
+   │  1. Check agent enabled / provider configuration
+   │  2. Validate request payload (max size 64KB, max history 10 messages)
+   │  3. Call runAgentTurn() in apps/web/src/lib/agent/orchestrator.ts
+   ▼
+Bounded Orchestrator (src/lib/agent/orchestrator.ts)
+   │  Step 1: Retrieve actual events & tasks via MCP (callMcpTool: get_schedule, get_tasks)
+   │  Step 2: Pass untrusted calendar data + user prompt to OpenAiProvider
+   │  Step 3: Extract structured intent using strict Zod schema (rawExtractedIntentSchema)
+   │  Step 4: Deterministic validation:
+   │          - Ensure target event ID exists in retrieved events
+   │          - Ensure protected event IDs exist in retrieved events
+   │          - Ensure overrun minutes are within 1-240
+   │          - Check for ambiguity / missing duration -> if needed, return clarification
+   │          - Check for unsupported operations -> return polite limitation explanation
+   │  Step 5: Call analyze_conflicts via MCP
+   │  Step 6: Call propose_recovery_plan via MCP (candidates ranked by engine)
+   │  Step 7: Pick top candidate & call validate_recovery_plan via MCP (independent check)
+   │  Step 8: Generate grounded explanation from actual tool findings (explanations.ts)
+   ▼
+JSON response { ok: true, data: AgentTurnData, activity: ActivityRecord[] }
+   │
+   ▼
+Browser (useRecoveryApp.ts updates chat history, analysis, plans, validation, & activity panel)
+```
+
+### Key Components
+
+| Part | Location | Responsibility |
+| --- | --- | --- |
+| Provider Adapter | `src/lib/agent/provider.ts` | Integrates official `openai` SDK (`^7.43.0`) with structured JSON mode and timeouts. Exposes `LlmProvider` interface for dependency injection in tests. |
+| Agent Schemas | `src/lib/agent/schemas.ts` | Strict Zod schemas for intent extraction (`supported`, `needs_clarification`, `unsupported`) and route requests. |
+| System Prompt | `src/lib/agent/systemPrompt.ts` | Clear role instructions treating event titles and notes as untrusted context; prevents prompt injection; enforces exact event ID resolution. |
+| Orchestrator | `src/lib/agent/orchestrator.ts` | Bounded workflow managing tool sequences, timeouts, error cascades, and state transitions. |
+| Grounded Explanations | `src/lib/agent/explanations.ts` | Formulates human-readable summaries directly from backend conflict counts, proposed candidate shifts, and validator checks. Never fabricates times. |
+| Conversational UI | `src/components/AgentChat.tsx` | Suggested prompt pills, chat message bubbles, status badges, thinking indicators, and smooth scroll to structured controls. |
+
+### Design Decisions & Safety Controls
+
+1. **Separation of Concerns**: The LLM handles natural-language interpretation, event resolution, and user-facing explanations. It never invents calendar slots, moves events, or assesses schedule conflicts.
+2. **Explicit Tool Allowlist**: The orchestrator only ever calls the 5 existing read-only tools: `get_schedule`, `get_tasks`, `analyze_conflicts`, `propose_recovery_plan`, and `validate_recovery_plan`.
+3. **Untrusted Calendar Data**: Event titles, notes, and task descriptions are explicitly marked as untrusted in the prompt context to prevent indirect prompt injection from calendar entries.
+4. **Strict Grounding**: Target event IDs and protected event IDs must match actual records in SQLite returned by `get_schedule`. Hallucinated or invalid IDs trigger clarification or validation errors.
+5. **No Mutation / Zero Writes**: The agent workflow is strictly read-only. SQLite is never updated. The UI banner reminds users that the calendar remains unchanged.
+6. **Coexistence with Structured Form**: The original `DisruptionForm` remains fully active directly below `AgentChat` with seamless state sharing. If an LLM API key is unconfigured, users receive a clear notice and can use the manual form without interruption.
 
 ## Seams for later phases (Phase 0 to Phase 2 view, kept for reference)
 

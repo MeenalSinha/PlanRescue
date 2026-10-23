@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AnalyzeData, ApiError, ApiResponse, DashboardData, ProposeData, ToolActivity, ToolName, ValidateData } from './api';
+import type { AgentChatMessage, AgentTurnData } from './agent/types';
 import { DEFAULT_DATE, DEFAULT_PLANNING_END, DEFAULT_PLANNING_START } from './constants';
 import type { RecoveryPlan } from './contract';
 import { analyzeRequestSchema, fieldErrors, proposeRequestSchema, type AnalyzeRequest, type ProposeRequest } from './requests';
@@ -105,6 +106,9 @@ export function useRecoveryApp() {
   const [validations, setValidations] = useState<Record<string, Remote<ValidateData>>>({});
   const [log, setLog] = useState<ToolActivity[]>([]);
   const [pending, setPending] = useState<PendingCall[]>([]);
+  const [agentTurn, setAgentTurn] = useState<Remote<AgentTurnData>>({ status: 'idle' });
+  const [chatHistory, setChatHistory] = useState<AgentChatMessage[]>([]);
+  const [mode, setMode] = useState<'agent' | 'structured'>('agent');
   const dashboardSeq = useRef(0);
   const scenarioSeq = useRef(0);
 
@@ -157,6 +161,7 @@ export function useRecoveryApp() {
     setProposal({ status: 'idle' });
     setSelectedPlanId(null);
     setValidations({});
+    setAgentTurn({ status: 'idle' });
   }, []);
 
   const changeDate = useCallback(
@@ -166,6 +171,7 @@ export function useRecoveryApp() {
       setFormState((f) => ({ ...defaultForm(next), optimizeFor: f.optimizeFor }));
       setFormErrors({});
       resetResults();
+      setChatHistory([]);
       void loadDashboard(next);
     },
     [loadDashboard, resetResults],
@@ -245,6 +251,68 @@ export function useRecoveryApp() {
     [record, track],
   );
 
+  const sendAgentMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const userMsg: AgentChatMessage = { role: 'user', content: trimmed };
+      const nextHistory = [...chatHistory, userMsg];
+      setChatHistory(nextHistory);
+      setAgentTurn({ status: 'loading' });
+
+      const seq = ++scenarioSeq.current;
+      const res = await track<AgentTurnData>(
+        ['get_schedule', 'get_tasks', 'analyze_conflicts', 'propose_recovery_plan', 'validate_recovery_plan'],
+        () =>
+          post<AgentTurnData>('/api/agent/turn', {
+            message: trimmed,
+            date,
+            history: chatHistory,
+          }),
+      );
+
+      if (seq !== scenarioSeq.current) return;
+      record(res.activity, res);
+
+      if (res.ok) {
+        setAgentTurn({ status: 'ready', data: res.data });
+        setChatHistory([...nextHistory, { role: 'assistant', content: res.data.message }]);
+
+        if (res.data.analysis) {
+          setAnalysis({ status: 'ready', data: res.data.analysis });
+        }
+        if (res.data.planSet) {
+          setProposal({ status: 'ready', data: res.data.planSet });
+          if (res.data.selectedPlan) {
+            setSelectedPlanId(res.data.selectedPlan.planId);
+            if (res.data.validation) {
+              setValidations({
+                [res.data.selectedPlan.planId]: { status: 'ready', data: res.data.validation },
+              });
+            }
+          }
+        }
+        if (res.data.scenario) {
+          setFormState((prev) => ({
+            ...prev,
+            eventId: res.data.scenario!.targetEventId,
+            overrun: String(res.data.scenario!.overrunMinutes),
+            protectedIds: res.data.scenario!.protectedEventIds,
+            optimizeFor: res.data.scenario!.preference,
+          }));
+        }
+      } else {
+        setAgentTurn({ status: 'error', error: res.error });
+      }
+    },
+    [chatHistory, date, record, track],
+  );
+
+  const clearChat = useCallback(() => {
+    setChatHistory([]);
+    setAgentTurn({ status: 'idle' });
+  }, []);
+
   /** True when the form no longer describes the scenario that was analysed. */
   const scenarioChanged = useMemo(() => {
     if (!analyzedRequest || !offset) return false;
@@ -267,6 +335,12 @@ export function useRecoveryApp() {
     validations,
     log,
     pending,
+    agentTurn,
+    chatHistory,
+    mode,
+    setMode,
+    sendAgentMessage,
+    clearChat,
     scenarioChanged,
     setForm,
     setSelectedPlanId,

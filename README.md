@@ -6,7 +6,7 @@ PlanRescue is a consequence-aware schedule recovery agent. When a meeting runs l
 
 This repository is the submission for the **Amazon Developer Hackathon 2026, Alexa+ track**. That track requires a genuine MCP server over the Streamable HTTP transport, so the first thing built here is exactly that: a real MCP server, exercised by a real MCP client.
 
-## Current scope (Phase 0 to Phase 4)
+## Current scope (Phase 0 to Phase 5)
 
 Implemented and verified:
 
@@ -18,18 +18,16 @@ Implemented and verified:
   - `get_tasks`: tasks with deadlines, estimated durations, priorities and statuses, with optional filters.
 - **A deterministic Recovery Engine (Phase 3)** behind three more read-only MCP tools: `analyze_conflicts`, `propose_recovery_plan` and `validate_recovery_plan`. Given an event that ran late, it finds the conflicts, generates rescheduling candidates with plain TypeScript logic (no LLM, no external API), and re-validates every candidate with an independent validator. See [Phase 3: the Recovery Engine](#phase-3-the-recovery-engine).
 - **A web interface (Phase 4)** in `apps/web`: a Next.js app that shows the real calendar and tasks, lets you report an event overrun, and walks through conflict analysis, plan comparison and independent validation. It reaches the backend only through the official MCP client. See [Phase 4: the web interface](#phase-4-the-web-interface).
+- **AI Agent Integration & Natural-Language Orchestration (Phase 5)**: A bounded, tool-using AI agent that accepts free-form natural-language disruption requests, grounds them against real calendar events and tasks retrieved through MCP, extracts structured intent with strict Zod validation, asks for clarification when ambiguous or incomplete, orchestrates `analyze_conflicts`, `propose_recovery_plan`, and `validate_recovery_plan` via MCP, produces grounded explanations, and presents recommendations directly in the web UI while keeping the structured manual controls fully functional as an alternative.
 - Strict input validation, structured output plus a readable text rendering, and logs that show what actually happened.
-- End-to-end tests that start the built server as a separate process and talk to it with the official MCP client over HTTP, including a stop-and-restart persistence test.
+- Comprehensive test coverage across backend, persistence, Recovery Engine, Next.js web application, agent intent extraction, agent security guards, agent orchestration, and real MCP integration over Streamable HTTP.
 
 Planned, not implemented (do not read the list below as features):
 
-- Applying a recovery plan: nothing writes to the calendar. Plans are proposals; there is no approval workflow, no `apply_approved_plan` tool and no stored plan history
-- Disruption types other than `event_overrun` (cancellations, new urgent tasks, travel delays) and natural-language interpretation of disruptions
+- Applying a recovery plan: nothing writes to the calendar. Plans are proposals; there is no approval workflow, no `apply_approved_plan` tool and no stored plan history (Phase 6)
+- Disruption types other than `event_overrun` (cancellations, new urgent tasks, travel delays)
 - Tools that create, change or delete events and tasks (the database is read-only through MCP today)
-- AI agent orchestration and LLM integration
-- Approval workflow and applying schedule changes
-- Google Calendar integration, deployment
-- Free-form natural-language requests in the web interface (the form is structured on purpose; no LLM is involved)
+- Google Calendar integration, public deployment
 
 ## Technology
 
@@ -353,6 +351,84 @@ These figures come from the engine and may differ if the seed data or engine cha
 - Task findings are aggregate capacity estimates; tasks are not placed in calendar slots.
 - One user, one calendar, sample development data, no authentication.
 - The sandbox used to build this had no display, so interface checks were done with Chrome 131 driven by Playwright and with axe-core (no violations on the dashboard or the completed workflow); it has not been tested on other browsers or on a physical phone.
+
+## Phase 5: AI agent integration and natural-language orchestration
+
+Phase 5 introduces a bounded, tool-using AI agent and a conversational interface to the existing PlanRescue web application. Users can describe their scheduling disruptions in free-form natural language (e.g. *"My team meeting is running 40 minutes late. Fix my afternoon, but don't move my doctor's appointment."*).
+
+The implementation strictly adheres to the principle of **LLM intent interpretation + deterministic backend orchestration**:
+- The LLM never calculates schedules or evaluates conflict feasibility.
+- The LLM extracts structured intent, resolves references against actual retrieved calendar events and tasks, and generates grounded explanations.
+- All scheduling calculations and independent validations are executed by the existing deterministic Recovery Engine through genuine MCP tools.
+
+### Architecture
+
+```
+User (Natural language input in AgentChat UI)
+          │
+          ▼
+POST /api/agent/turn (apps/web/src/app/api/agent/turn/route.ts)
+          │
+          ▼
+Bounded Orchestrator (apps/web/src/lib/agent/orchestrator.ts)
+          │
+          ├──► 1. get_schedule & get_tasks via MCP (grounding context)
+          │
+          ├──► 2. LLM Provider (openai SDK) structured intent extraction
+          │       Strict Zod schema validation (apps/web/src/lib/agent/schemas.ts)
+          │
+          ├──► [If ambiguous or missing info] ──► Return Clarification Question
+          ├──► [If unsupported disruption]     ──► Return Unsupported Explanation
+          │
+          ├──► 3. analyze_conflicts via MCP
+          │
+          ├──► 4. propose_recovery_plan via MCP (candidates ranked by engine)
+          │
+          ├──► 5. validate_recovery_plan via MCP (independent re-verification)
+          │
+          ▼
+Grounded Explanation Generator (apps/web/src/lib/agent/explanations.ts)
+          │
+          ▼
+Client State & UI (Updates Chat, AnalysisPanel, PlanComparison, ValidationPanel, ActivityPanel)
+```
+
+### LLM Provider Integration
+
+- **SDK**: Official TypeScript SDK `openai` (`^7.43.0`).
+- **Adapter**: `OpenAiProvider` in `apps/web/src/lib/agent/provider.ts` using structured outputs (`response_format: { type: 'json_object' }`) validated with Zod.
+- **Model**: Default `gpt-4o-mini`, configurable via `PLANRESCUE_AGENT_MODEL`.
+- **Server-Side Safety**: All credentials and API calls remain strictly on the Next.js server; no API keys are exposed to the browser or client-side code.
+- **Graceful Fallback**: If `OPENAI_API_KEY` is not configured or the agent provider fails, the system returns a clear, user-facing notice explaining that the AI agent is unconfigured and guides the user to the fully functional structured controls.
+
+### Environment Configuration
+
+Add to `apps/web/.env.local` (or root `.env`):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | *(empty)* | OpenAI API key for natural language interpretation (server-side only) |
+| `PLANRESCUE_AGENT_ENABLED` | `true` | Enable or disable the natural language agent route |
+| `PLANRESCUE_AGENT_MODEL` | `gpt-4o-mini` | Model identifier for intent extraction |
+| `PLANRESCUE_AGENT_TIMEOUT_MS` | `30000` | Maximum time allowed for LLM inference (ms) |
+| `OPENAI_BASE_URL` | *(standard OpenAI API)* | Optional custom endpoint or reverse proxy for OpenAI-compatible models |
+
+### Bounded Orchestration & Security Guards
+
+1. **Explicit MCP Tool Allowlist**: The agent orchestrator can only execute the 5 pre-existing read-only tools (`get_schedule`, `get_tasks`, `analyze_conflicts`, `propose_recovery_plan`, `validate_recovery_plan`).
+2. **Untrusted Data Defense**: Event titles, notes, and task descriptions are passed in system prompt context as untrusted data to prevent prompt injection from calendar notes.
+3. **Strict Schema Grounding**: Target event IDs and protected event IDs extracted by the model are strictly verified against the actual calendar events returned by `get_schedule`. Fabricated or hallucinated IDs are immediately rejected or routed to clarification.
+4. **Limits**: Max request body size (64 KB), bounded chat history (last 10 turns), message length caps, and per-tool call timeouts.
+5. **Strictly Read-Only**: The agent does not modify the database. The banner explicitly states *"Recovery plan proposed — calendar unchanged"*.
+
+### Testing the Agent
+
+- **Unit Intent Tests**: `npx vitest run apps/web/tests/agent.intent.test.ts` (10 tests)
+- **Security & Guard Tests**: `npx vitest run apps/web/tests/agent.security.test.ts` (5 tests)
+- **Orchestration Tests**: `npx vitest run apps/web/tests/agent.orchestration.test.ts` (4 tests)
+- **Component UI Tests**: `npx vitest run apps/web/tests/agent.component.test.tsx` (8 tests)
+- **Real MCP Integration Tests**: `npx vitest run apps/web/tests/agent.integration.test.ts` (4 tests - executes live MCP server over Streamable HTTP and verifies real tool responses and untouched database fingerprint)
+- **Full Web Suite**: `npm run test:web` (111 tests in 12 files)
 
 ## Data layer (SQLite)
 

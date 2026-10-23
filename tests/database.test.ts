@@ -158,15 +158,17 @@ describe('idempotent seeding', () => {
 
   it('produces an isolated scenario per database file', () => {
     const other = makeTempDatabase();
+    let b: Db | undefined;
     try {
       const a = track(initializeDatabase(tmp.path).db);
-      const b = track(initializeDatabase(other.path).db);
+      b = initializeDatabase(other.path).db;
       a.prepare("UPDATE tasks SET status = 'completed' WHERE id = 'task-002'").run();
       a.prepare('DELETE FROM calendar_events').run();
       expect(b.prepare("SELECT status FROM tasks WHERE id = 'task-002'").get()).toEqual({ status: 'pending' });
       expect(countRows(b).events).toBe(seedEvents.length);
       expect(countRows(a).events).toBe(0);
     } finally {
+      b?.close();
       other.cleanup();
     }
   });

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { longDate } from '@/lib/time';
 import { useRecoveryApp } from '@/lib/useRecoveryApp';
 import { ActivityPanel, ConnectionBadge } from './ActivityPanel';
+import { AgentChat } from './AgentChat';
 import { AnalysisPanel } from './AnalysisPanel';
 import { DisruptionForm } from './DisruptionForm';
 import { PlanComparison } from './PlanComparison';
@@ -153,7 +154,26 @@ export function App() {
                     </SectionCard>
                   </div>
 
-                  <SectionCard title="1 · Report a disruption" id="scenario">
+                  <SectionCard
+                    title="1 · Report a disruption"
+                    id="scenario"
+                    subtitle="Natural language AI agent or structured manual controls"
+                  >
+                    <AgentChat
+                      history={app.chatHistory}
+                      turn={app.agentTurn}
+                      busy={app.agentTurn.status === 'loading'}
+                      onSend={(msg) => void app.sendAgentMessage(msg)}
+                      onSwitchToStructured={() => {
+                        const el = document.getElementById('manual-controls');
+                        el?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                    />
+
+                    <div className="section-divider" id="manual-controls">
+                      <span className="section-divider-text">Or configure manually with structured controls</span>
+                    </div>
+
                     <DisruptionForm
                       dashboard={data}
                       form={app.form}

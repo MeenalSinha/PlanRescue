@@ -84,6 +84,11 @@ async function main(): Promise<void> {
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('message', (msg) => {
+    if (msg === 'SIGTERM' || msg === 'shutdown') {
+      void shutdown('SIGTERM');
+    }
+  });
   process.on('unhandledRejection', (reason) => {
     logger.error(`Unhandled rejection: ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`);
   });
