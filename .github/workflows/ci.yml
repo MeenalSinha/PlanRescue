@@ -28,9 +28,9 @@ jobs:
       - name: Install the web interface
         working-directory: apps/web
         run: |
-          npm ci || {
-            ERR=$(tail -n 20 ~/.npm/_logs/*-debug-0.log | tr '\n' ' ')
-            echo "::error title=npm-ci-failure::$ERR"
+          OUT=$(npm ci 2>&1) || {
+            echo "::error title=npm-ci-output::$(echo "$OUT" | tail -n 15 | tr '\n' ' ')"
+            echo "$OUT"
             exit 1
           }
       - run: npm run typecheck:web
