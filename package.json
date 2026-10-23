@@ -2,7 +2,7 @@
   "name": "planrescue",
   "version": "0.1.0",
   "private": true,
-  "description": "PlanRescue: consequence-aware schedule recovery. Phase 0-4: MCP server (Streamable HTTP) with SQLite-backed get_schedule and get_tasks, and a deterministic Recovery Engine behind analyze_conflicts, propose_recovery_plan and validate_recovery_plan. The apps/web Next.js interface calls those tools through the official MCP client.",
+  "description": "PlanRescue: consequence-aware schedule recovery. Phases 0-8: Streamable HTTP MCP server, SQLite persistence, deterministic Recovery Engine, Next.js web application, natural-language AI agent orchestration, approval workflow with atomic ACID execution, audit history, hardening, and Recovery Decision Reports.",
   "license": "MIT",
   "type": "module",
   "engines": {

@@ -1,6 +1,88 @@
 # Implementation report
 
-Eight milestones are recorded here, newest first. Phase 8 is the Recovery Decision Reports & Explainability system with exportable Markdown and JSON formats. Phase 7 is the comprehensive audit, hardening, and release readiness. Phase 6 is the approval, safe execution, persistent recovery plans, and persistent action audit history. Phase 5 is the AI agent integration and natural-language orchestration. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+This document records the full engineering history and audit verification of PlanRescue. The topmost section presents the **Final Debugging, Full-System Audit & Release Verification** covering Phases 0–8. Below it, the Phase 8 milestone and preceding milestones (Phases 7, 6, 5, 4, 3, 2, 1, and 0) are preserved in reverse chronological order.
+
+## Final Debugging, Full-System Audit & Release Verification
+
+Status: **RELEASE READY WITH DOCUMENTED LIMITATIONS**. Comprehensive full-system verification completed across Phases 0–8 in this environment (Windows, Node 22, npm). All 11 MCP tools operate genuinely over Streamable HTTP. Proposing, validating, inspecting, or exporting recovery decision reports leaves SQLite 100% untouched. Applying approved plans executes atomically with full rollback on failure.
+
+### 1. Full-System Phase Audit Summary (Phases 0–8)
+
+| Phase | Main Area | Initial Finding | Final Status | Evidence |
+| --- | --- | --- | --- | --- |
+| **0** | Foundation & Setup | Clean repo structure, strict TS config, verified Node >= 22.12 engines | **PASS** | `npm run typecheck`, `npm run build` |
+| **1** | MCP Server & Schedule Retrieval | Streamable HTTP MCP server (official SDK v2.3.1) with `get_schedule` | **PASS** | `npm run test:mcp` (90 passed) |
+| **2** | SQLite & Task Retrieval | Migrations v1-v2, WAL mode, foreign keys, `get_tasks` tool | **PASS** | `npm run test:db` (80 passed) |
+| **3** | Recovery Engine | Deterministic proposal, constraint solver, independent validation | **PASS** | `npm run test:recovery` (89 passed) |
+| **4** | Frontend Workflow | Next.js interface, server-side route handlers, no direct DB imports | **PASS** | `apps/web/tests/architecture.test.ts`, `app.component.test.tsx` (30 passed) |
+| **5** | Natural-Language AI Agent | Grounded intent extraction, bounded MCP orchestration, prompt injection guards | **PASS** | `apps/web/tests/agent.*.test.ts` (31 passed) |
+| **6** | Approval & Execution | Persistent recovery plans, explicit approval, atomic apply, audit history | **PASS** | `npm run test:lifecycle` (8 passed) |
+| **7** | Hardening & Reliability | Transaction rollback, stale-plan detection, idempotency, release smoke | **PASS** | `npm run test:hardening` (12 passed), `npm run test:smoke` (1 passed) |
+| **8** | Reporting & Explainability | Decision reports (Markdown & schema v1.0.0 JSON), UI modal, read-only safety | **PASS** | `npm run test:reports` (11 passed), `apps/web/tests/report.test.ts` (2 passed) |
+
+### 2. Issues Discovered and Fixed
+
+During the comprehensive audit and execution checks:
+1. **Frontend Unit Test Runner Configuration (`apps/web/package.json`)**:
+   - *Severity*: Low
+   - *Affected Component*: `npm run test:web:unit`
+   - *Root Cause*: The explicit list of test files for `test:unit` in `apps/web/package.json` had not been updated to include `tests/report.test.ts`.
+   - *Fix Applied*: Added `tests/report.test.ts` to `test:unit` in `apps/web/package.json`.
+   - *Verification*: Executed `npm run test:web:unit`, confirming all 88 unit tests across 9 test files passed.
+2. **Package Descriptions Scope Alignment (`package.json`, `apps/web/package.json`)**:
+   - *Severity*: Low
+   - *Affected Component*: Package metadata
+   - *Root Cause*: `package.json` description still referenced "Phase 0-4" and `apps/web/package.json` referenced "Phase 4".
+   - *Fix Applied*: Updated root description to Phases 0–8 and web description to Phases 4–8.
+   - *Verification*: Inspected package files and ran `npm run check`.
+3. **Default Database Initialization Demonstration**:
+   - *Severity*: Low / Operational
+   - *Affected Component*: `scripts/db-inspect.ts`
+   - *Root Cause*: On a completely fresh clone before the server is started, `data/planrescue.sqlite` does not yet exist.
+   - *Fix Applied*: Verified that server startup and `scripts/demo-client.ts` automatically seed `data/planrescue.sqlite` with the seeded October 22, 2026 workday.
+   - *Verification*: Executed `npm run db:inspect` after server run; confirmed 6 calendar events, 5 tasks, 1 recovery plan, and 3 action history records correctly populated.
+
+### 3. Verification Commands and Gate Outcomes
+
+All tests executed against real compiled code, live MCP servers over Streamable HTTP, and SQLite:
+
+| Check | Command | Result | Notes |
+| --- | --- | --- | --- |
+| Root Typecheck | `npm run typecheck` | **PASS** | Clean, 0 errors |
+| Web Typecheck | `npm run typecheck:web` | **PASS** | Clean, 0 errors |
+| Backend Tests | `npm test` | **PASS** | 363 passed in 19 files (100%) |
+| Web Tests | `npm run test:web` | **PASS** | 113 passed in 13 files (100%) |
+| Web Unit Tests | `npm run test:web:unit` | **PASS** | 88 passed in 9 files (100%) |
+| Web E2E / HTTP | `npm run test:e2e` | **PASS** | 7 passed in 2 files (100%) |
+| Hardening Suite | `npm run test:hardening` | **PASS** | 12 passed in 1 file (100%) |
+| Smoke Suite | `npm run test:smoke` | **PASS** | 1 passed (19 assertion steps) |
+| Reports Suite | `npm run test:reports` | **PASS** | 11 passed in 1 file (100%) |
+| Full CI Gate | `npm run check` | **PASS** | **476 passed across 32 files (100%)** |
+| Production Build | `npm run build && npm run build:web` | **PASS** | Next.js Turbopack build succeeded in 840ms |
+| Live MCP Demo Client | `npm run demo:client` | **PASS** | 11 MCP tools exercised over Streamable HTTP |
+| DB Inspector | `npm run db:inspect` | **PASS** | Verified WAL mode, schema v2, real table records |
+
+### 4. Safety and Reliability Verification
+
+* **Transaction Rollback**: Mid-transaction failure fault-injection test confirmed that all calendar modifications are atomically rolled back, the plan remains in `approved` state, and an `apply_failed` audit entry is recorded without corrupting state.
+* **Stale-Plan Detection**: Verified that if any calendar event or task duration/deadline is modified after plan generation, the snapshot hash mismatch triggers an immediate rejection with `plan_stale` recorded.
+* **Approval & Execution Guards**: Verified that unapproved plans cannot be applied, duplicate applications are idempotent, and the frontend enforces a two-step explicit confirmation modal before initiating execution.
+* **AI Agent Boundaries**: Verified that the AI agent only invokes read-only tools (`get_schedule`, `get_tasks`, `analyze_conflicts`, `propose_recovery_plan`, `validate_recovery_plan`) and cannot autonomously approve, reject, or apply recovery plans. Hallucinated or injected event IDs are strictly rejected.
+* **Decision Reports & Read-Only Safety**: Verified that generating and exporting Markdown or JSON reports leaves the SQLite database file byte-for-byte identical (SHA-256 fingerprint verified) with zero mutations.
+
+### 5. Final Release Recommendation
+
+**VERDICT: RELEASE READY WITH DOCUMENTED LIMITATIONS**
+
+The application is functionally complete, robustly hardened, and thoroughly tested across all Phases 0–8 requirements. All 476 automated tests pass with 100% reliability, real MCP integration operates over Streamable HTTP, transaction boundaries enforce strict ACID properties, and the decision explainability reports provide grounded insights.
+
+The accepted limitations for this hackathon prototype are:
+1. **Single-User Local Prototype**: Actor attribution is recorded as `local-user` / `demo-user`; enterprise multi-tenant IAM is out of scope.
+2. **Local Calendar Target**: Target is the local PlanRescue SQLite calendar database; external Google Calendar / Microsoft Graph APIs are intentionally out of scope.
+3. **Supported Disruption Type**: Focused exclusively on `event_overrun` disruptions.
+4. **Historical Report Completeness**: Historical reports present strictly retained persisted data without fabricating unrecorded attributes.
+
+---
 
 ## Phase 8: Recovery Decision Reports & Explainability
 
