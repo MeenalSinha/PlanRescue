@@ -27,12 +27,7 @@ jobs:
         run: npm test
       - name: Install the web interface
         working-directory: apps/web
-        run: |
-          OUT=$(npm ci 2>&1) || {
-            echo "::error title=npm-ci-output::$(echo "$OUT" | head -n 25 | tr '\n' ' ')"
-            echo "$OUT"
-            exit 1
-          }
+        run: npm ci
       - run: npm run typecheck:web
       - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
         run: npm run test:web
