@@ -6,7 +6,7 @@ PlanRescue is a consequence-aware schedule recovery agent. When a meeting runs l
 
 This repository is the submission for the **Amazon Developer Hackathon 2026, Alexa+ track**. That track requires a genuine MCP server over the Streamable HTTP transport, so the first thing built here is exactly that: a real MCP server, exercised by a real MCP client.
 
-## Current scope (Phase 0 to Phase 7)
+## Current scope (Phase 0 to Phase 8)
 
 Implemented and verified:
 
@@ -26,7 +26,7 @@ Implemented and verified:
   - `apply_approved_plan`: atomic, transactional schedule updates for approved plans with stale-fingerprint detection. Only tool permitted to mutate calendar events.
   - `get_action_history`: persistent chronological audit trail of all lifecycle events.
 - **A deterministic Recovery Engine (Phase 3)** behind plain TypeScript logic (no LLM, no external API), and re-validates every candidate with an independent validator.
-- **A web interface (Phase 4 & Phase 6)** in `apps/web`: Next.js web application offering visual schedule comparison, independent validation, explicit approval & rejection actions, a confirmation modal for atomic plan application, and an action history timeline.
+- **A web interface (Phase 4, Phase 6 & Phase 8)** in `apps/web`: Next.js web application offering visual schedule comparison, independent validation, explicit approval & rejection actions, a confirmation modal for atomic plan application, an action history timeline, and full Recovery Decision Report inspection & export.
 - **AI Agent Integration & Natural-Language Orchestration (Phase 5)**: Bounded, tool-using AI agent that accepts free-form natural-language disruption requests, grounds them against real calendar events and tasks retrieved through MCP, extracts structured intent with strict Zod validation, asks for clarification when ambiguous or incomplete, orchestrates read-only MCP tools, and produces grounded explanations. Write-capable tools are never exposed autonomously to the LLM.
 - **Safety & Atomic Execution**: Generating or validating a plan NEVER alters calendar events. Only an explicit user approval followed by a separate user confirmation on the frontend invokes `apply_approved_plan`, which atomically updates event times in a single SQLite transaction and logs an immutable audit trail entry.
 - **Phase 7 Hardening & Reliability**:
@@ -34,12 +34,18 @@ Implemented and verified:
   - Comprehensive stale-plan detection across both calendar event mutations and task mutations.
   - Concurrency & idempotency hardening preventing race conditions between racing apply/reject operations.
   - Full release smoke test executing the complete 19-step lifecycle end-to-end against real SQLite and MCP server.
-  - 463 tests across 30 test suites passing 100%.
+- **Phase 8 Recovery Decision Reports & Explainability**:
+  - Audit-grade decision reports detailing disruption context, schedule diff, preserved duration, protected constraints rationale, task capacity impacts, and deterministic penalty scoring.
+  - Two export formats: clean, human-readable Markdown (`.md`) and strictly validated JSON (`.json`, schema version `1.0.0`).
+  - Read-only safety guarantees: report inspection and export never mutate calendar events, plan lifecycle states, or audit history.
+  - Integrated in the PlanRescue web application (`apps/web`): users can inspect the report modal (with Structured, Markdown, and JSON views) or download `.md` and `.json` reports directly with a single click.
+  - 476 tests across 32 test suites passing 100% (363 backend tests in 19 files + 113 web tests in 13 files).
 
 ### Known Limitations
 * **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
 * **Local Calendar Target**: Execution modifies the local PlanRescue SQLite calendar database; integration with Google Calendar or Microsoft Graph APIs is intentionally out of scope.
 * **Disruption Types**: Focused on `event_overrun` scenarios; travel delays and multi-day replanning remain future extensions.
+* **Report Scope**: Reports reflect actual persisted and session data; missing or unrecorded history is stated honestly rather than manufactured.
 
 ## Technology
 
@@ -106,6 +112,7 @@ On every later start the last line reads `inserted 0 events, 0 tasks`.
 | `npm run test:persistence` | Build, then run the stop-and-restart persistence test |
 | `npm run test:lifecycle` | Build, then run Phase 6 lifecycle MCP tool tests |
 | `npm run test:hardening` | Build, then run Phase 7 transaction atomicity, stale detection, and concurrency hardening tests |
+| `npm run test:reports` | Build, then run Phase 8 Recovery Decision Reports and Explainability tests |
 | `npm run test:smoke` | Build, then run Phase 7 comprehensive release smoke test end-to-end |
 | `npm test` | Build, then run every backend test |
 | `npm run check` | Backend typecheck and tests, then web typecheck, build and tests; the same gate CI runs |

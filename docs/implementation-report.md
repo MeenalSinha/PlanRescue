@@ -1,6 +1,72 @@
 # Implementation report
 
-Six milestones are recorded here, newest first. Phase 6 is the approval, safe execution, persistent recovery plans, and persistent action audit history. Phase 5 is the AI agent integration and natural-language orchestration. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+Eight milestones are recorded here, newest first. Phase 8 is the Recovery Decision Reports & Explainability system with exportable Markdown and JSON formats. Phase 7 is the comprehensive audit, hardening, and release readiness. Phase 6 is the approval, safe execution, persistent recovery plans, and persistent action audit history. Phase 5 is the AI agent integration and natural-language orchestration. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+
+## Phase 8: Recovery Decision Reports & Explainability
+
+Status: implemented and verified in this environment (Windows, Node 22, npm). All 11 MCP tools operate genuinely over Streamable HTTP. Recovery Decision Reports generate grounded, explainable summaries of recovery candidates in both strict JSON (schema version `1.0.0`) and clean Markdown formats. Proposing, validating, inspecting, or exporting reports leaves SQLite 100% untouched.
+
+### 1. Pre-flight audit (Phases 0 to 7)
+
+Prior to implementing Phase 8, all earlier phases (Phase 0 foundation, Phase 1 MCP integration, Phase 2 SQLite persistence, Phase 3 Recovery Engine, Phase 4 Web UI, Phase 5 AI agent, Phase 6 approval/history, and Phase 7 hardening) were audited and verified.
+- Initial backend test run: 352 tests passed across 18 test files.
+- Initial web test run: 111 tests passed across 12 test files.
+- Total pre-flight baseline: **463 tests passed across 30 files (100%)**.
+- Zero regressions, zero skipped tests, zero database schema mutations.
+
+### 2. Architecture & Report Generator
+
+Implemented deterministic decision report generation:
+1. **Report Modules**:
+   - `apps/mcp-server/src/recovery/report.ts`: Pure, deterministic backend module generating reports adhering to `REPORT_SCHEMA_VERSION = '1.0.0'`.
+   - `apps/web/src/lib/report.ts`: Web counterpart ensuring full client/SSR capability without crossing architectural package boundaries or creating forbidden imports from `mcp-server`.
+2. **Strict Zod Schemas (`recoveryDecisionReportSchema`)**:
+   - Validates all report fields: metadata (report ID, schema version, generated timestamp, plan ID, status, snapshot hash, engine version), disruption context, schedule diff, protected constraints, task impact, penalty scoring breakdown, audit trail summary, and validation verdict.
+3. **Comprehensive Explainability Grounding**:
+   - **Disruption Context**: Disrupted event details, overrun minutes, and original vs extended end times.
+   - **Schedule Diff & Invariants**: Every shifted event is logged with original start/end, new start/end, delta in minutes, and explicit verification that duration was preserved (`originalDurationMinutes === newDurationMinutes`).
+   - **Protected Constraints**: Lists all protected and immovable events, explaining why they were preserved without alteration.
+   - **Task Capacity Impact**: Computes remaining buffer versus required duration for all active tasks, classifying risk origins into `none`, `pre_existing`, `disruption`, or `plan_introduced`.
+   - **Objective Penalty Score Breakdown**: Detailed component breakdown (delay, priority, movement, disruption spread penalties) with a mandatory, prominent disclaimer:
+     > *"Lower penalty score is better. The penalty score is an objective function evaluating schedule disruption (delays, priority weights, movements, and schedule spread). It is NOT a probability or AI confidence metric."*
+   - **Audit Trail Grounding**: Incorporates timestamps and actors from persisted action history (`proposed`, `approved`, `applied`, `rejected`, `stale`).
+4. **Markdown Renderer (`renderRecoveryDecisionReportMarkdown`)**:
+   - Generates clean, publication-ready Markdown tables and alert callouts.
+   - Sanitizes text and cell content (escaping pipe characters `|`, newlines, and raw HTML tags) to prevent table breakage and XSS.
+
+### 3. Web UI Integration
+
+Updated `apps/web/src/components/PlanComparison.tsx` and `apps/web/src/app/globals.css`:
+- **Report Highlights Bar**: Instant visual summary in candidate view showing status badge, penalty score, number of rescheduled events, protected events count, and independent validation verdict.
+- **Interactive Report Modal ("📄 Inspect Report")**:
+  - Tab 1: **Structured View** — Executive summary, formatted schedule diff with duration preservation pill, task risk origins, and governance disclaimer.
+  - Tab 2: **Markdown (.md)** — Syntax-highlighted Markdown document preview with quick copy capability.
+  - Tab 3: **JSON Schema (.json)** — Formatted version `1.0.0` JSON payload with metadata.
+- **One-Click Export Triggers**:
+  - **⬇️ Export .md**: Downloads clean Markdown file (`planrescue-report-[planId].md`).
+  - **⬇️ Export .json**: Downloads schema-conforming JSON (`planrescue-report-[planId].json`).
+  - Implemented client-side via safe `URL.createObjectURL(new Blob(...))` with immediate object URL revocation.
+
+### 4. Verification Results
+
+All tests executed against real compiled code and live MCP servers:
+
+| Command | Results |
+| --- | --- |
+| `npm run check` (end-to-end CI gate) | Passed, exit 0 |
+| Backend suite (`npm test`) | **363 passed in 19 files (100%)** |
+| Web suite (`npm run test:web`) | **113 passed in 13 files (100%)** |
+| Total test suite | **476 passed, 0 failed** |
+| `tests/phase8-reports.test.ts` | **11 passed** (Zod schema validation, HTML/table escaping, duration preservation, markdown generation, all 5 lifecycle states, byte-for-byte SQLite database read-only immutability, and 12-step end-to-end integration workflow) |
+| `apps/web/tests/report.test.ts` | **2 passed** (web report generator contract and markdown rendering) |
+| `apps/web/tests/architecture.test.ts` | **5 passed** (architectural isolation preserved; zero cross-package imports) |
+| `tests/release-smoke.test.ts` | **1 passed** (19-step end-to-end release smoke test) |
+
+### 5. Read-Only Safety Verification
+
+The report generation and export processes are strictly read-only:
+- In `tests/phase8-reports.test.ts`, SHA-256 digests of the entire SQLite database file and individual table row counts were compared before and after generating and exporting reports.
+- Zero bytes were modified, zero rows were inserted or deleted, and zero audit records were generated by report inspection.
 
 ## Phase 6: Approval, safe execution & persistent action history
 
@@ -562,7 +628,7 @@ What the smoke test covers: initialization and version negotiation; tool discove
 9. **Validation logging** wraps the Standard Schema's `validate` function. It is covered by log assertions in the smoke test, but it relies on the SDK continuing to honour that interface.
 10. The seeded data is temporary development data held in memory.
 
-### Phase 6 & 7: Implementation & Hardening Report
+### Phase 6, 7 & 8: Implementation, Hardening & Explainability Report
 
 #### Phase 6: Persistent Recovery Plans, Approval Workflow & Safe Execution
 - Migration 2 deployed version 2 schema (`user_version = 2`) introducing `recovery_plans` and `action_history` tables.
@@ -581,10 +647,20 @@ What the smoke test covers: initialization and version negotiation; tool discove
   - Verified concurrent application racing: serialized safely by SQLite write transactions with exactly one commit and no duplicate audit entries.
 - **Release Smoke Test**:
   - `tests/release-smoke.test.ts`: 19-step end-to-end verification across real MCP server and SQLite persistence.
+
+#### Phase 8: Recovery Decision Reports & Explainability
+- **Report Modules**:
+  - `apps/mcp-server/src/recovery/report.ts` and `apps/web/src/lib/report.ts` providing pure, deterministic report generation and markdown rendering adhering to `REPORT_SCHEMA_VERSION = '1.0.0'`.
+- **Decision Explainability**:
+  - Grounds disruption context, schedule diff with duration preservation check, protected constraints rationale, task capacity impacts categorized by risk origins (`none`, `pre_existing`, `disruption`, `plan_introduced`), and objective penalty scoring breakdown with mandatory non-confidence disclaimer.
+- **Web UI & Export**:
+  - Report highlights bar, 3-tab interactive modal (Structured, Markdown, JSON), and one-click export download triggers (`.md` and `.json`).
+- **Strict Read-Only Guarantees**:
+  - Verified byte-for-byte immutability of SQLite database file during report inspection and export.
 - **Comprehensive Test Results**:
-  - Backend: 18 test files, 352 passed (100%).
-  - Web: 12 test files, 111 passed (100%).
-  - Combined `npm run check`: 30 test files, 463 tests passed (100%).
+  - Backend: 19 test files, 363 passed (100%).
+  - Web: 13 test files, 113 passed (100%).
+  - Combined `npm run check`: 32 test files, 476 tests passed (100%).
 
 ### Known Limitations
 * **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
@@ -593,4 +669,4 @@ What the smoke test covers: initialization and version negotiation; tool discove
 
 ### Release Readiness
 - **Status: READY FOR RELEASE.**
-- All Phase 0–7 requirements verified with zero skipped or weakened tests.
+- All Phase 0–8 requirements verified with zero skipped or weakened tests across 476 automated test cases.

@@ -4,6 +4,7 @@ import type { RecoveryPlan, ScheduleEvent, Task } from '@/lib/contract';
 import { OUTCOME_LABEL, PROTECTION_REASON_LABEL, SCORE_COMPONENT_LABEL, STRATEGY_LABEL } from '@/lib/labels';
 import { clock, describeMove, offsetOf, rangeLabel } from '@/lib/time';
 import type { Remote } from '@/lib/useRecoveryApp';
+import { generateRecoveryDecisionReport, renderRecoveryDecisionReportMarkdown } from '@/lib/report';
 import { Timeline, computeRange, type TimelineItem } from './ScheduleTimeline';
 import { CapacityBadge, Notice, OriginTag, Spinner } from './ui';
 import { ValidationPanel } from './ValidationPanel';
@@ -376,6 +377,30 @@ function PlanDetail({
   const disrupted = events.find((e) => e.id === plan.disruption.eventId);
   const components = Object.entries(plan.score.components).flatMap(([k, v]): Array<[string, number]> => (typeof v === 'number' ? [[k, v]] : []));
 
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportTab, setReportTab] = useState<'preview' | 'markdown' | 'json'>('preview');
+
+  const report = generateRecoveryDecisionReport({
+    plan,
+    events,
+    tasks,
+    timeZone: `UTC${utcOffset}`,
+  });
+  const markdown = renderRecoveryDecisionReportMarkdown(report);
+
+  function downloadBlob(content: string, filename: string, contentType: string) {
+    if (typeof window === 'undefined') return;
+    const blob = new Blob([content], { type: contentType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <article className="plan-detail" aria-label={`${STRATEGY_LABEL[plan.strategy]} plan details`}>
       <header>
@@ -520,6 +545,185 @@ function PlanDetail({
       <section aria-labelledby={`val-${plan.planId}`}>
         <h4 id={`val-${plan.planId}`}>Independent validation</h4>
         <ValidationPanel plan={plan} state={validation} events={events} tasks={tasks} onVerify={onVerify} />
+      </section>
+
+      <section aria-labelledby={`report-${plan.planId}`} className="decision-report-section">
+        <div className="report-section-header">
+          <div>
+            <h4 id={`report-${plan.planId}`}>Recovery Decision Report &amp; Explainability</h4>
+            <p className="muted small">
+              Audit-grade recovery decision report detailing disruption context, schedule diff, protected constraints, and deterministic rationale.
+            </p>
+          </div>
+          <div className="report-export-buttons">
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowReportModal(true)}
+              aria-label="Inspect recovery decision report"
+            >
+              📄 Inspect Report
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => downloadBlob(markdown, `planrescue-report-${plan.planId}.md`, 'text/markdown')}
+              aria-label="Export report as Markdown"
+            >
+              ⬇️ Export .md
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => downloadBlob(JSON.stringify(report, null, 2), `planrescue-report-${plan.planId}.json`, 'application/json')}
+              aria-label="Export report as JSON"
+            >
+              ⬇️ Export .json
+            </button>
+          </div>
+        </div>
+
+        <div className="report-highlights">
+          <div className="report-highlight-pill">
+            <span className="muted small">Status:</span>
+            <strong>{(plan.savedStatus ?? 'proposed').toUpperCase()}</strong>
+          </div>
+          <div className="report-highlight-pill">
+            <span className="muted small">Penalty:</span>
+            <strong>{plan.score.total}</strong>
+          </div>
+          <div className="report-highlight-pill">
+            <span className="muted small">Rescheduled:</span>
+            <strong>{plan.changes.length} event(s)</strong>
+          </div>
+          <div className="report-highlight-pill">
+            <span className="muted small">Protected:</span>
+            <strong>{plan.unchangedProtectedEvents.length} preserved</strong>
+          </div>
+          <div className="report-highlight-pill">
+            <span className="muted small">Validation:</span>
+            <strong className={plan.validation.isValid ? 'ok-text' : 'bad-text'}>
+              {plan.validation.isValid ? '✓ Valid' : '✕ Invalid'}
+            </strong>
+          </div>
+        </div>
+
+        {showReportModal ? (
+          <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby={`report-modal-title-${plan.planId}`}>
+            <div className="modal-card modal-card-lg">
+              <div className="modal-header">
+                <h3 id={`report-modal-title-${plan.planId}`}>Recovery Decision Report</h3>
+                <div className="modal-tabs">
+                  <button
+                    type="button"
+                    className={`btn-tab ${reportTab === 'preview' ? 'active' : ''}`}
+                    onClick={() => setReportTab('preview')}
+                  >
+                    Structured View
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-tab ${reportTab === 'markdown' ? 'active' : ''}`}
+                    onClick={() => setReportTab('markdown')}
+                  >
+                    Markdown (.md)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-tab ${reportTab === 'json' ? 'active' : ''}`}
+                    onClick={() => setReportTab('json')}
+                  >
+                    JSON (.json)
+                  </button>
+                </div>
+              </div>
+
+              <div className="modal-body-scrollable">
+                {reportTab === 'preview' ? (
+                  <div className="report-preview-pane">
+                    <div className="report-meta-box">
+                      <p><strong>Report ID:</strong> {report.metadata.reportId}</p>
+                      <p><strong>Status:</strong> <span className={`tag tag-status tag-${report.metadata.status}`}>{report.metadata.status.toUpperCase()}</span></p>
+                      <p><strong>Generated:</strong> {report.metadata.generatedAt}</p>
+                      <p><strong>Plan ID:</strong> {report.metadata.planId}</p>
+                      <p><strong>Snapshot Hash:</strong> <code>{report.metadata.snapshotHash}</code></p>
+                    </div>
+
+                    <h5>Executive Summary</h5>
+                    <p>{report.recommendedPlan.summary}</p>
+
+                    <h5>Disruption Details</h5>
+                    <p>{report.disruption.description}</p>
+
+                    <h5>Rescheduled Events ({report.recommendedPlan.changesCount})</h5>
+                    {report.recommendedPlan.changes.length === 0 ? (
+                      <p className="muted small">No events rescheduled.</p>
+                    ) : (
+                      <table className="compact-table">
+                        <thead>
+                          <tr>
+                            <th>Event</th>
+                            <th>Original</th>
+                            <th>Proposed</th>
+                            <th>Shift</th>
+                            <th>Preserved</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.recommendedPlan.changes.map((c) => (
+                            <tr key={c.eventId}>
+                              <td>{c.title}</td>
+                              <td>{rangeLabel(c.originalStartTime, c.originalEndTime)}</td>
+                              <td><strong>{rangeLabel(c.proposedStartTime, c.proposedEndTime)}</strong></td>
+                              <td>{c.shiftMinutes >= 0 ? `+${c.shiftMinutes}m` : `${c.shiftMinutes}m`}</td>
+                              <td>{c.durationPreserved ? '✓ Yes' : '✕ No'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+
+                    <h5>Decision Rationale &amp; Penalty Scoring</h5>
+                    <p className="muted small">{report.decisionRationale.scoringNotice}</p>
+                    <ul className="plain">
+                      {report.decisionRationale.tradeoffs.map((t, idx) => (
+                        <li key={idx}>• {t}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : reportTab === 'markdown' ? (
+                  <pre className="report-code-block font-mono">{markdown}</pre>
+                ) : (
+                  <pre className="report-code-block font-mono">{JSON.stringify(report, null, 2)}</pre>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowReportModal(false)}
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => downloadBlob(markdown, `planrescue-report-${plan.planId}.md`, 'text/markdown')}
+                >
+                  Export Markdown
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => downloadBlob(JSON.stringify(report, null, 2), `planrescue-report-${plan.planId}.json`, 'application/json')}
+                >
+                  Export JSON
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </article>
   );

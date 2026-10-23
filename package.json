@@ -20,6 +20,7 @@
     "test:persistence": "npm run build && vitest run tests/persistence.test.ts",
     "test:lifecycle": "npm run build && vitest run tests/phase6-lifecycle.test.ts",
     "test:hardening": "npm run build && vitest run tests/phase7-hardening.test.ts",
+    "test:reports": "npm run build && vitest run tests/phase8-reports.test.ts",
     "test:smoke": "npm run build && vitest run tests/release-smoke.test.ts",
     "demo:client": "tsx scripts/demo-client.ts",
     "db:inspect": "tsx scripts/db-inspect.ts",

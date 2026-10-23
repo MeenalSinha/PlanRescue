@@ -352,8 +352,65 @@ Phase 7 hardens the implementation into a fully verified, resilient, and demonst
 - Full 19-step lifecycle smoke test (`tests/release-smoke.test.ts`) verifies the complete journey against a fresh SQLite database and real MCP server over Streamable HTTP:
   `Propose -> Save -> Approve -> Confirm -> Apply -> Verify DB -> Record History -> Server Restart -> Persistent Verification -> Idempotent Re-apply`.
 
+## Phase 8: Recovery Decision Reports & Explainability
+
+Phase 8 introduces audit-grade, exportable **Recovery Decision Reports** in both human-readable Markdown (`.md`) and machine-readable JSON (`.json`, schema version `1.0.0`) based on actual persisted PlanRescue data, providing complete explainability into candidate recommendations and lifecycle history without modifying underlying schemas or compromising read-only guarantees.
+
+### 1. Architectural Principles & Generation Flow
+
+```
+   [Recovery Plan] (Saved or Candidate) + [Action History] + [Calendar Events] + [Tasks]
+                                      │
+                                      ▼
+                        generateRecoveryDecisionReport()
+                     (Pure, deterministic, no I/O, no LLM)
+                                      │
+                      ┌───────────────┴───────────────┐
+                      ▼                               ▼
+            Validated JSON Report             Markdown Report
+          (schemaVersion: "1.0.0")     (Structured audit tables)
+```
+
+1. **Pure & Deterministic Generation**:
+   - `generateRecoveryDecisionReport`: Accepts plan data (from `SqliteRecoveryPlanRepository` or in-memory proposal), associated action history entries (from `SqliteActionHistoryRepository`), calendar events, and task findings.
+   - Computes shift minutes, duration preservation checks, and compiles trade-off explanations deterministically.
+   - Produces a strictly typed `RecoveryDecisionReport` validated against `recoveryDecisionReportSchema`.
+2. **Markdown Renderer**:
+   - `renderRecoveryDecisionReportMarkdown`: Formats the report into a clean, GitHub-flavored Markdown document with structured diff tables, status indicators, protected commitment audits, task capacity verdicts, score breakdowns, independent validation summaries, audit logs, and scope notices.
+   - Escapes user-controlled text (e.g. table pipes, newlines) safely.
+3. **Dual Export Formats**:
+   - **Markdown (`.md`)**: Designed for human review, technical documentation, issue tracking, and external sharing.
+   - **JSON (`.json`)**: Versioned (`schemaVersion: '1.0.0'`) machine-readable schema for automated verification, CI auditing, or downstream analytics.
+
+### 2. Explainability & Decision Grounding
+
+- **Lifecycle State Truthfulness**:
+  - Distinguishes clearly between proposed plans (calendar untouched) and executed plans (`applied`, modified in SQLite).
+  - Accurately reports `approved` (ready for application), `stale` (underlying schedule altered, application blocked), and `rejected` states.
+- **Scoring & Trade-off Transparency**:
+  - Explicitly documents the deterministic penalty formula and component point breakdown (`changedEvents`, `priorityWeightedDelay`, `focusTime`, `tightTransitions`, `taskRisk`).
+  - Clear governance disclaimer: penalty points follow a lower-is-better model and are not probabilities, likelihoods, or AI confidence scores.
+  - Distinguishes hard non-negotiable constraints (immovability, critical commitments, non-overlapping intervals) from soft ranking preferences.
+- **Task Capacity & Deadline Risk Origins**:
+  - Classifies deadline risk origins (`none`, `pre_existing`, `disruption`, `plan_introduced`) so pre-existing deadline issues are never falsely attributed to the recovery plan.
+
+### 3. Read-Only Safety Guarantees
+
+- **Zero Calendar Mutations**: Generating, viewing, or exporting reports performs read-only queries and causes 0 modifications to SQLite calendar events.
+- **Zero Lifecycle Transitions**: Opening or downloading reports never alters plan status or creates false approval/apply records.
+- **Database Immutability Verified**: Automated tests compare full SQLite table hashes and row dumps before and after report generation to verify zero byte-level state drift.
+
+### 4. Web Application Integration
+
+- Integrated seamlessly inside the PlanRescue Next.js web application (`apps/web`):
+  - **Plan Detail View**: Adds an interactive "Recovery Decision Report & Explainability" section to selected candidate plans.
+  - **Single-Click Exports**: Dedicated download buttons for `.md` and `.json` reports.
+  - **Modal Inspector**: Interactive tabbed modal allowing users to inspect the structured view, raw Markdown, or raw JSON without leaving the browser.
+- Respects architectural boundaries: The frontend generates client-side reports directly from MCP-provided contract data, preserving strict route whitelisting and eliminating unnecessary cross-boundary imports.
+
 ## Known Limitations
 
 * **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.
 * **Local Calendar Target**: Execution modifies the local PlanRescue SQLite calendar database; integration with Google Calendar or Microsoft Graph APIs is intentionally out of scope.
 * **Disruption Types**: Focused on `event_overrun` scenarios; travel delays and multi-day replanning remain future extensions.
+* **Report Scope**: Reports reflect actual persisted and session data; missing or unrecorded history is stated honestly rather than manufactured.
