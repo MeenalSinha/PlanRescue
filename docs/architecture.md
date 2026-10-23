@@ -1,6 +1,6 @@
-# PlanRescue architecture (Phase 0 to Phase 3)
+# PlanRescue architecture (Phase 0 to Phase 4)
 
-This document describes what exists today and the seams left for later phases. Anything not listed under "Implemented" is planned and is not in the code. In particular there is no agent or LLM, no approval workflow and no tool that modifies the calendar or tasks. The Recovery Engine (Phase 3) exists and is read-only: it computes and validates proposals and never applies them.
+This document describes what exists today and the seams left for later phases. Anything not listed under "Implemented" is planned and is not in the code. In particular there is no agent or LLM, no approval workflow and no tool that modifies the calendar or tasks. The Recovery Engine (Phase 3) exists and is read-only: it computes and validates proposals and never applies them. Phase 4 adds a web interface that displays what the existing tools return; it adds no scheduling logic.
 
 ## Implemented
 
@@ -150,6 +150,55 @@ The generator hands each candidate to `validateRecoveryPlan` as a plain payload,
 | Natural-language agent | Calls the same three tools; it maps a sentence to the structured disruption and explains the returned result. It does not choose times. |
 | Stored plans | A plan table keyed by the existing `planId`; `validate_recovery_plan` could then accept an ID. |
 
+## Phase 4: the web interface
+
+### Request flow
+
+```
+Browser (React client components, apps/web/src/components)
+   |  fetch: GET /api/dashboard, POST /api/recovery/analyze | propose | validate
+   v
+Next.js route handler (apps/web/src/app/api/**)
+   |  1. enforce content type and body size, validate the body with Zod (lib/requests.ts)
+   |  2. callMcpTool(<fixed tool name>, args, contract schema)   (lib/mcpClient.ts)
+   v
+Official MCP client  ->  Streamable HTTP  ->  PlanRescue MCP server (Host/Origin guards unchanged)
+   v
+MCP tool  ->  Recovery Engine  ->  SQLite repositories (read-only)
+   ^
+   |  structuredContent, checked against the contract, returned with a real activity record
+Route handler -> JSON envelope { ok, data | error, activity[] } -> Browser state -> screens
+```
+
+`callMcpTool` opens one connection per call, applies a timeout, calls the tool, treats `isError: true` as a tool error (HTTP 422, distinct from an invalid plan), rejects results without valid structured content as malformed (502), maps unreachable and timed-out servers to 503 and 504 with a generic message, and always closes the client in `finally`. Technical detail goes to the server log only.
+
+### Components
+
+| Part | Location | Responsibility |
+| --- | --- | --- |
+| MCP client helper | `src/lib/mcpClient.ts` | The only code that imports the MCP SDK. Server-side only. |
+| Contract | `src/lib/contract.ts` | Loose Zod schemas for tool output. Unknown fields are kept so a candidate reaches the validator unchanged. |
+| Request schemas | `src/lib/requests.ts` | Limits mirroring the engine's. Shared by the form and the routes. |
+| Config | `src/lib/env.ts` | Validates `PLANRESCUE_*` variables; never exposed to the browser. |
+| Route kit | `src/lib/routeKit.ts` | Body limits, uniform envelopes, error-to-status mapping. |
+| State | `src/lib/useRecoveryApp.ts` | Moves data between user, routes and screen. Computes no schedule, conflict, score or verdict. Ignores stale responses and marks results out of date when the form changes. |
+| Screens | `src/components/*` | Timeline, task list, disruption form, analysis, plan comparison, validation, activity panel. |
+
+### Design decisions
+
+- **The frontend renders; the engine decides.** Conflicts, plans, scores, task-capacity findings and validity are shown exactly as returned. The only arithmetic in the UI is presentation: how far a start time moved, and drawing the reported overrun on the timeline from the user's own input.
+- **Server-side MCP client.** Avoids cross-origin access, so the server's Host and Origin checks stay as they were.
+- **Allow-listed routes, no generic tool proxy.** Each route calls one fixed tool; extra request fields are rejected.
+- **Timestamps are displayed from their own offset**, never converted to the viewer's zone.
+- **Failure classes stay distinct.** An invalid plan, a tool-level error, an unreachable server and a malformed result each have their own message and status.
+- **The activity panel is evidence, not decoration.** Entries come from records the server created around real calls. A tool never called shows "Not called yet".
+- **`apps/web` is a separate npm package** (own `package.json`, lockfile and TypeScript project) so Next's tooling cannot disturb the backend build. The root `tsconfig.json` excludes it.
+
+### Seams left for later phases
+
+- Phase 5 can add a natural-language entry point that produces the same structured scenario the form produces, reusing the routes and screens.
+- Phase 6 can add approval and apply routes beside the existing ones and a new write-capable MCP tool; the plan-comparison screen already identifies a selected candidate.
+
 ## Seams for later phases (Phase 0 to Phase 2 view, kept for reference)
 
 | Later phase | Where it plugs in |
@@ -170,3 +219,4 @@ The generator hands each candidate to `validateRecoveryPlan` as a plain payload,
 - `get_tasks` has no pagination.
 - Deleted seed rows reappear on the next start.
 - Recovery Engine limits: only the `event_overrun` disruption; moved events only ever move later; task effort is estimated as aggregate capacity (no slots, no progress tracking); no travel time; a 14-day, 500-event bound per request. See the README for the full list.
+- Web interface: structured form only; one user, one calendar, sample data, no authentication; activity history lives in the browser session; tested with Chrome 131 only.

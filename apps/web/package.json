@@ -1,0 +1,39 @@
+{
+  "name": "planrescue-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PlanRescue web interface (Phase 4). Talks to the PlanRescue MCP server through server-side route handlers only.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1 --port 3000",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1 --port 3000",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/lib.test.ts tests/architecture.test.ts tests/mcpClient.test.ts tests/app.component.test.tsx",
+    "test:integration": "vitest run tests/routes.integration.test.ts",
+    "test:e2e": "vitest run tests/workflow.e2e.test.tsx tests/http.e2e.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^30.1.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

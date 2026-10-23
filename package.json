@@ -2,7 +2,7 @@
   "name": "planrescue",
   "version": "0.1.0",
   "private": true,
-  "description": "PlanRescue: consequence-aware schedule recovery. Phase 0-3: MCP server (Streamable HTTP) with SQLite-backed get_schedule and get_tasks, and a deterministic Recovery Engine behind analyze_conflicts, propose_recovery_plan and validate_recovery_plan.",
+  "description": "PlanRescue: consequence-aware schedule recovery. Phase 0-4: MCP server (Streamable HTTP) with SQLite-backed get_schedule and get_tasks, and a deterministic Recovery Engine behind analyze_conflicts, propose_recovery_plan and validate_recovery_plan. The apps/web Next.js interface calls those tools through the official MCP client.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -20,8 +20,16 @@
     "test:persistence": "npm run build && vitest run tests/persistence.test.ts",
     "demo:client": "tsx scripts/demo-client.ts",
     "db:inspect": "tsx scripts/db-inspect.ts",
-    "check": "npm run typecheck && npm test",
-    "test:recovery": "vitest run tests/recovery-time.test.ts tests/recovery-task-capacity.test.ts tests/recovery-analyze.test.ts tests/recovery-generate.test.ts tests/recovery-validate.test.ts"
+    "check": "npm run typecheck && npm test && npm run typecheck:web && npm run test:web",
+    "test:recovery": "vitest run tests/recovery-time.test.ts tests/recovery-task-capacity.test.ts tests/recovery-analyze.test.ts tests/recovery-generate.test.ts tests/recovery-validate.test.ts",
+    "setup": "npm ci && npm ci --prefix apps/web",
+    "dev:web": "npm run dev --prefix apps/web",
+    "build:web": "npm run build --prefix apps/web",
+    "start:web": "npm run start --prefix apps/web",
+    "typecheck:web": "npm run typecheck --prefix apps/web",
+    "test:web": "npm run build && npm run build:web && npm test --prefix apps/web",
+    "test:web:unit": "npm run test:unit --prefix apps/web",
+    "test:e2e": "npm run build && npm run build:web && npm run test:e2e --prefix apps/web"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

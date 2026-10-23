@@ -6,7 +6,7 @@ PlanRescue is a consequence-aware schedule recovery agent. When a meeting runs l
 
 This repository is the submission for the **Amazon Developer Hackathon 2026, Alexa+ track**. That track requires a genuine MCP server over the Streamable HTTP transport, so the first thing built here is exactly that: a real MCP server, exercised by a real MCP client.
 
-## Current scope (Phase 0 to Phase 3)
+## Current scope (Phase 0 to Phase 4)
 
 Implemented and verified:
 
@@ -17,6 +17,7 @@ Implemented and verified:
   - `get_schedule`: calendar events overlapping a time interval.
   - `get_tasks`: tasks with deadlines, estimated durations, priorities and statuses, with optional filters.
 - **A deterministic Recovery Engine (Phase 3)** behind three more read-only MCP tools: `analyze_conflicts`, `propose_recovery_plan` and `validate_recovery_plan`. Given an event that ran late, it finds the conflicts, generates rescheduling candidates with plain TypeScript logic (no LLM, no external API), and re-validates every candidate with an independent validator. See [Phase 3: the Recovery Engine](#phase-3-the-recovery-engine).
+- **A web interface (Phase 4)** in `apps/web`: a Next.js app that shows the real calendar and tasks, lets you report an event overrun, and walks through conflict analysis, plan comparison and independent validation. It reaches the backend only through the official MCP client. See [Phase 4: the web interface](#phase-4-the-web-interface).
 - Strict input validation, structured output plus a readable text rendering, and logs that show what actually happened.
 - End-to-end tests that start the built server as a separate process and talk to it with the official MCP client over HTTP, including a stop-and-restart persistence test.
 
@@ -27,7 +28,8 @@ Planned, not implemented (do not read the list below as features):
 - Tools that create, change or delete events and tasks (the database is read-only through MCP today)
 - AI agent orchestration and LLM integration
 - Approval workflow and applying schedule changes
-- Web interface, Google Calendar integration, deployment
+- Google Calendar integration, deployment
+- Free-form natural-language requests in the web interface (the form is structured on purpose; no LLM is involved)
 
 ## Technology
 
@@ -51,7 +53,15 @@ npm run dev:mcp       # start the server; creates and seeds ./data/planrescue.sq
 
 No compiler is needed: `better-sqlite3` ships prebuilt binaries for Linux, macOS and Windows (x64 and arm64). The committed `.npmrc` sets `ignore-scripts=true` so that `npm ci` uses them. Without it, `npm ci` tries to compile the module from source, which needs a C++ toolchain and a download from nodejs.org (see `docs/implementation-report.md`).
 
-In a second terminal:
+To also run the web interface (a separate npm package in `apps/web`):
+
+```bash
+npm run setup         # npm ci for the backend and for apps/web (once)
+npm run dev:mcp       # terminal 1: the MCP server on http://127.0.0.1:3001/mcp
+npm run dev:web       # terminal 2: the web app on http://127.0.0.1:3000
+```
+
+In another terminal (command-line demo, no browser):
 
 ```bash
 npm run demo:client   # connects over MCP, lists tools, calls get_schedule and get_tasks
@@ -85,9 +95,16 @@ On every later start the last line reads `inserted 0 events, 0 tasks`.
 | `npm run test:mcp` | Build, then run the end-to-end MCP smoke test |
 | `npm run test:persistence` | Build, then run the stop-and-restart persistence test |
 | `npm test` | Build, then run every test |
-| `npm run check` | Typecheck plus all tests; the same gate CI runs |
+| `npm run check` | Backend typecheck and tests, then web typecheck, build and tests; the same gate CI runs |
 | `npm run demo:client` | Demo MCP client against a running server (`MCP_URL` overrides the target) |
 | `npm run db:inspect` | Print schema version, row counts and rows of the database, read-only |
+| `npm run setup` | `npm ci` for the backend and for `apps/web` |
+| `npm run dev:web` / `npm run start:web` | Run the web interface in development / from a production build (port 3000) |
+| `npm run build:web` | Production build of the web interface |
+| `npm run typecheck:web` | Type check the web interface |
+| `npm run test:web:unit` | Web tests that need no server: helpers, request schemas, MCP client failure mapping, architecture guard, component tests |
+| `npm run test:web` | Build backend and web, then run every web test, including the real-MCP integration and end-to-end tests |
+| `npm run test:e2e` | Build, then run only the web end-to-end tests |
 
 To run the smoke test against a server you already started, set `MCP_URL`. The data there must be the untouched seed data:
 
@@ -262,6 +279,81 @@ The demo client reads the seeded day through MCP, analyses a 40-minute Team Meet
 
 To run only the engine's tests: `npm run test:recovery`.
 
+## Phase 4: the web interface
+
+`apps/web` is a Next.js (React, TypeScript) application. It is a user interface for the existing backend, not a second implementation of it: every calendar event, task, conflict, plan and verdict on screen was returned by an MCP tool.
+
+### What it does
+
+1. **Today's Plan.** On load it calls `get_schedule` and `get_tasks` (and a baseline `analyze_conflicts` of the stored schedule) and shows the day as a timeline, the tasks with deadlines, and a summary derived from those results. Fixed and movable events look different, and the time zone and UTC offset are shown.
+2. **Report a disruption.** A structured form maps directly to the engine's input: planning window, the one supported disruption type (`event_overrun`), the late event (a dropdown built from `get_schedule`), minutes late (presets 15, 30, 40, 60, or any whole number from 1 to 240), extra events that must not move, and a ranking preference. The form uses the same Zod schemas the server enforces.
+3. **Conflict analysis** (`analyze_conflicts`). Conflicts caused by the disruption are shown apart from conflicts that already existed, with severity as text as well as colour, affected events, the events the planner will not move and why, and task-deadline findings.
+4. **Plan comparison** (`propose_recovery_plan`). The engine's real candidates, in its order, with strategy, rank, number of changes, the penalty score (lower is better, never a percentage or confidence), and the engine's own summary and trade-offs. For the selected candidate: a table of original versus proposed times with the engine's reason for each move, side-by-side timelines, protected events, and task-capacity findings.
+5. **Independent validation** (`validate_recovery_plan`). "Verify this plan" sends the candidate back exactly as the engine returned it. The result shows validity, checks passed, violations, warnings and recalculated task capacity. A failure to run the check (server down, timeout, tool error) is shown as "could not check", never as valid or invalid.
+6. **MCP tool activity panel.** The five tools with their latest real outcome (or "Not called yet"), plus a log of recent calls with timestamp, duration and result. History lasts for the browser session only.
+
+Everything is read-only. The page states "Recovery plan proposed — calendar unchanged" and offers no apply, approve or accept action.
+
+### Architecture
+
+```
+Browser (React)
+   |  fetch /api/dashboard | /api/recovery/{analyze,propose,validate}
+   v
+Next.js route handlers  (apps/web/src/app/api/**, validate input, size limits, JSON errors)
+   |  callMcpTool()  (apps/web/src/lib/mcpClient.ts)
+   |  official MCP client, Streamable HTTP, one connection per call, closed in `finally`
+   v
+PlanRescue MCP server  (apps/mcp-server, unchanged: Host/Origin guards intact)
+   |  tools -> Recovery Engine
+   v
+SQLite repositories
+```
+
+- The browser never talks to the MCP server, and the web app never imports SQLite, the server code or any Recovery Engine module. `tests/architecture.test.ts` fails if that changes.
+- There is no generic "call any tool" endpoint. Four allow-listed routes each call one fixed tool: `GET /api/dashboard` (`get_schedule`, `get_tasks`, `analyze_conflicts`), `POST /api/recovery/analyze` (`analyze_conflicts`), `POST /api/recovery/propose` (`propose_recovery_plan`), `POST /api/recovery/validate` (`validate_recovery_plan`).
+- Tool results are checked against a loose contract before use, so a malformed result is reported rather than rendered. Unknown fields are preserved, which is what lets a candidate go to the validator unchanged.
+- Each response carries the activity records (tool, status, duration, summary) of the calls the server actually made. The panel renders those; nothing is hard-coded.
+- The connection badge reflects the last real MCP outcome. It is not "Connected" merely because the page loaded.
+
+### Configuration
+
+Server-side only; nothing is sent to the browser and no `NEXT_PUBLIC_*` variable is used. Copy `apps/web/.env.example` to `apps/web/.env.local` to override. All values are optional.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PLANRESCUE_MCP_URL` | `http://127.0.0.1:3001/mcp` | The running MCP server's Streamable HTTP endpoint. Must be http(s), carry no credentials, and be a loopback host unless remote use is enabled. |
+| `PLANRESCUE_MCP_TIMEOUT_MS` | `10000` | Wait before reporting the server unavailable (1000 to 60000). |
+| `PLANRESCUE_CALENDAR_TIME_ZONE` | `Asia/Kolkata` | Zone of the calendar, used only to turn a chosen date into a day window with the right UTC offset. |
+| `PLANRESCUE_ALLOW_REMOTE_MCP` | `false` | Set `true` only when the MCP server is deliberately not local. |
+
+The web app does not need an LLM key or any credential.
+
+### Demonstrating the main scenario
+
+Start both servers (`npm run dev:mcp` and `npm run dev:web`), open http://127.0.0.1:3000, then:
+
+1. Under **1 · Report a disruption** choose **Team Meeting** as the event that ran late, click **40 min**, and tick **Doctor's Appointment** under "Events that must not move".
+2. Click **Analyze disruption**. Result with the seeded data: one new conflict, Team Meeting (running until 13:10) overlapping Lunch Break for 40 minutes, no pre-existing conflicts, and the three task deadlines that fall inside the window all remain feasible.
+3. Click **Generate recovery plans**. With the seeded data the engine returns one candidate, `minimal_disruption`, score 555: Lunch Break moves to 13:10 to 13:55, Project Review to 13:55 to 14:55, Focus Work to 14:55 to 16:25 (durations unchanged), with Team Meeting, Doctor's Appointment and Project Deadline Work unchanged. The page also lists the two strategies the engine did not offer, with its reasons (`buffered_transitions` found no valid placement with 10- or 5-minute buffers; `priority_first` would push Lunch Break past the end of the planning window).
+4. Click **Verify this plan**. The validator reloads the stored data and reports the plan valid ("Re-checked 3 proposed changes against 6 stored events and 3 task deadlines").
+5. Note the banner "Recovery plan proposed — calendar unchanged". Open the **Activity** tab, or `npm run db:inspect`, to confirm nothing changed.
+
+These figures come from the engine and may differ if the seed data or engine changes; the interface displays whatever the tools return.
+
+### Web tests
+
+`npm run test:web` builds both projects and runs 80 tests in `apps/web/tests`: helper and schema tests, MCP client failure mapping (SDK mocked on purpose, so each failure class can be forced), an architecture guard, 30 component tests (mocked `fetch`: empty states, unavailable server and retry, form validation, no-conflict, errors, candidate selection, infeasible result, valid, invalid and failed validation), 14 route integration tests against the real MCP server, and end-to-end tests. The end-to-end tests start the built MCP server and the production Next.js server as child processes and drive the real React app through the whole workflow over HTTP, then assert that every MCP tool was called (from the server's own log) and that every SQLite table is byte-for-byte unchanged.
+
+### Limits of this phase
+
+- Structured form only. There is no natural-language input and no AI agent; that is Phase 5.
+- Read-only: no approval, no applying a plan, no stored history. The activity list is per browser session. That is Phase 6.
+- Only `event_overrun` is supported, as in the engine.
+- Task findings are aggregate capacity estimates; tasks are not placed in calendar slots.
+- One user, one calendar, sample development data, no authentication.
+- The sandbox used to build this had no display, so interface checks were done with Chrome 131 driven by Playwright and with axe-core (no violations on the dashboard or the completed workflow); it has not been tested on other browsers or on a physical phone.
+
 ## Data layer (SQLite)
 
 Calendar events and tasks are stored separately because they are different things: an event occupies a fixed time slot, while a task is work with an effort estimate and a deadline that must be fitted around events. The project deadline in the sample data is a task deadline (`task-001`, due 20:00 IST), not a calendar event; the calendar separately holds a "Project Deadline Work" block.
@@ -321,11 +413,14 @@ Only do this for the development database. Tests never touch it: each test gets 
 - **Unit and database tests** (`test:unit`): timestamps and overlap rule, seed data, configuration, database initialization and migrations, constraint enforcement, idempotent seeding, and both SQLite repositories (boundaries, ordering, filters, invalid input, database errors).
 - **Recovery Engine tests** (`test:recovery`, also part of `test:unit`): conflict analysis, task capacity, plan generation (alternatives, ranking, determinism, infeasibility, no mutation of inputs) and the independent validator against deliberately invalid plans.
 - **MCP smoke test** (`test:mcp`): a real server process and the official MCP client over Streamable HTTP, run once per protocol era (2026-07-28 and 2025-11-25) for the two read tools, plus transport hardening, logs and shutdown, plus a Phase 3 end-to-end block that calls the three recovery tools through MCP and proves the SQLite rows are unchanged afterwards.
+- **Web interface tests** (`test:web`): see [Web tests](#web-tests).
 - **Persistence test** (`test:persistence`): starts a server on a temporary database, reads through MCP, stops it, restarts it on the same file and checks the data is identical and not duplicated, that edits are kept, that changes made to the file are visible live, and that bad `DATABASE_PATH` values stop startup.
 
 Current counts and results are recorded in `docs/implementation-report.md`.
 
 ## Folder structure
+
+The web interface lives in `apps/web` (its own `package.json` and lockfile; layout described under [Phase 4](#phase-4-the-web-interface): `src/app` pages and API routes, `src/components`, `src/lib` including `mcpClient.ts`, and `tests`).
 
 ```
 planrescue/

@@ -17,7 +17,15 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/web/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - name: Build and run all tests (unit + real MCP client over Streamable HTTP)
+      - name: Build and run all backend tests (unit + real MCP client over Streamable HTTP)
         run: npm test
+      - name: Install the web interface
+        run: npm ci --prefix apps/web
+      - run: npm run typecheck:web
+      - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
+        run: npm run test:web

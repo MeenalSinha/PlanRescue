@@ -1,6 +1,82 @@
 # Implementation report
 
-Three milestones are recorded here, newest first. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+Four milestones are recorded here, newest first. Phase 4 is the web interface in `apps/web`. Phase 3 is the deterministic Recovery Engine and its three MCP tools. Phase 2 is the SQLite data layer and the `get_tasks` tool. The Phase 0 and Phase 1 record is kept at the bottom as written at that time. Each earlier section is left as it was written; where a later phase changed something (test totals, tool list), the later section is authoritative.
+
+## Phase 4: web interface (Next.js over the real MCP server)
+
+Status: implemented and verified in this environment (Linux, Node 22.22.2, npm 10.9.7) for the scope below. Not implemented, by design: natural-language input or any LLM (Phase 5), approval, applying a plan, any write to the calendar or database, stored history (Phase 6), Google Calendar, deployment.
+
+### 1. Pre-flight audit (Phase 0 to Phase 3), run before any frontend code
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Install, typecheck, build | `npm ci`, `npm run typecheck`, `npm run build` | Passed |
+| MCP over Streamable HTTP | `npm run test:mcp` | Passed |
+| SQLite and persistence | `npm run test:db`, `npm run test:persistence` | Passed |
+| Recovery Engine and unit tests | `npm run test:recovery`, `npm run test:unit` | Passed |
+| Full gate | `npm run check` | Passed, 328 tests in 14 files |
+| No secrets committed | `git grep` for key, secret, password and token assignments | None found |
+
+No backend defect was found, so no backend source file was changed. No existing test was deleted or weakened. After the frontend was added every command above was run again and passed, and `npm run demo:client` still completed against a live server.
+
+### 2. Frontend architecture
+
+- `apps/web` is a separate npm package (own `package.json`, `package-lock.json`, TypeScript project). The root `tsconfig.json` gained `"exclude": ["apps/web", ...]` so the backend typecheck and the build (scoped to `apps/mcp-server/src`) are unaffected.
+- Request path: Browser, Next.js route handler, `callMcpTool` (official `@modelcontextprotocol/client`, `StreamableHTTPClientTransport`), MCP server, tool, Recovery Engine, SQLite. See `docs/architecture.md`.
+- Routes: `GET /api/dashboard` (`get_schedule`, `get_tasks`, baseline `analyze_conflicts`), `POST /api/recovery/analyze`, `POST /api/recovery/propose`, `POST /api/recovery/validate`. No generic proxy.
+- The web package imports no SQLite code, no server code and no engine module; an automated test enforces this.
+
+New dependencies (all in `apps/web`, none added to the backend): `next` 16.4.2, `react` and `react-dom` 19.3.1, `@modelcontextprotocol/client` 2.3.1, `zod` 4.6.7; dev: `typescript` 7.0.2, `vitest` 5.0.5, `jsdom` 30.1.3, `@testing-library/react` 16.3.3, `user-event` 14.6.8, `jest-dom` 7.0.1, `@vitejs/plugin-react` 6.1.2, type packages.
+
+New root scripts: `setup`, `dev:web`, `build:web`, `start:web`, `typecheck:web`, `test:web`, `test:web:unit`, `test:e2e`. `check` now also runs `typecheck:web` and `test:web`. CI installs and tests `apps/web` as well. Existing scripts are unchanged.
+
+### 3. Screens and workflows implemented
+
+Today's Plan (timeline, tasks, summary, date and refresh), Report a disruption (structured form), Conflict analysis, Recovery plans (candidate cards, change table, side-by-side timelines, protected events, task capacity, trade-offs), Independent validation, MCP tool activity panel, and an Activity view. Loading, empty, success and error states exist for each, including: server unavailable with a retry that keeps form values, timeout, invalid input, empty calendar, empty tasks, no feasible plan, no candidates, validation tool error, malformed output and an unreadable response.
+
+### 4. Real demonstration result (observed, not assumed)
+
+Seeded day, Team Meeting 40 minutes late, Doctor's Appointment protected, window 08:00 to 20:00 (+05:30):
+
+- `analyze_conflicts`: one new conflict (Team Meeting running to 13:10 overlaps Lunch Break by 40 minutes), no pre-existing conflicts, the three task deadlines inside the window feasible.
+- `propose_recovery_plan`: one candidate, `minimal_disruption`, score 555; Lunch Break to 13:10 to 13:55, Project Review to 13:55 to 14:55, Focus Work to 14:55 to 16:25 (durations unchanged). The engine did not offer `buffered_transitions` (no valid placement with 10 or 5 minute buffers) or `priority_first` (Lunch Break would end after the window).
+- `validate_recovery_plan`: valid; a tampered copy (protected Doctor's Appointment added to the changes, with a false `isValid: true`) was reported invalid with a `protected_events` violation.
+- A SQLite fingerprint of every table, taken before and after, was identical.
+
+### 5. Verification results
+
+| Command | Result |
+| --- | --- |
+| `npm run check` (end to end) | Passed, exit 0 |
+| Backend suite | 328 passed, 14 files |
+| `npm run typecheck:web`, `npm run build:web` | Passed |
+| Web suite (`npm run test:web`) | 80 passed, 7 files |
+| of which: helpers and schemas | 18 |
+| of which: architecture guard | 5 |
+| of which: MCP client failure mapping (SDK mocked on purpose) | 6 |
+| of which: route integration against the real MCP server | 14 |
+| of which: component tests (mocked `fetch`) | 30 |
+| of which: end to end, real React app over HTTP to the real Next.js and MCP servers | 2 |
+| of which: raw HTTP surface against the real stack | 5 |
+| Chrome 131 via Playwright, desktop and 390 px wide | Full workflow completed, no console errors, no horizontal scroll; unavailable-server state and Retry recovery observed |
+| axe-core (WCAG 2 A and AA, best practice) | 0 violations on the dashboard and on the completed workflow, after one fix (below) |
+
+Not executed: any browser other than Chrome 131, a physical phone, screen-reader testing, load testing.
+
+Issues found and fixed during this phase: axe reported a `<p>` inside the summary `<dl>` (fixed); the disrupted event was labelled "Unchanged" in the protected list although its end time extends by the reported overrun (relabelled); a 3 px horizontal overflow at 390 px (fixed); no favicon, causing a 404 (inline icon added); a README claim about task feasibility was imprecise and was corrected against real output. Several of my own test assertions were too loose or too literal and were corrected; no assertion was weakened to hide application behaviour.
+
+### 6. Known limitations
+
+- Structured form only; one disruption type (`event_overrun`); no natural-language input.
+- Read-only: nothing can be approved or applied; activity history is per browser session.
+- Task findings are aggregate capacity estimates, not slot assignments.
+- Sample data, one user, no authentication. The web server binds to loopback by default and is not hardened for public exposure.
+- The end-to-end tests need built output; `npm run test:web` builds first, but running `npx vitest` inside `apps/web` without a build fails with a clear message.
+- The sandbox had no display, so visual review used screenshots from headless Chrome.
+
+### 7. Readiness for Phase 5
+
+Complete: every read-only tool is reachable through a validated route and rendered; the scenario is a single typed object; failure classes are distinct; the activity panel already shows real tool calls. Remaining for Phase 5: a natural-language entry point that produces that same scenario (and asks when something is missing), agent orchestration choosing among the existing tools, and any explanatory text beyond the engine's own findings. Phase 6 will need a write-capable tool, an approval step and persistent history, none of which exist.
 
 ## Phase 3: Recovery Engine (analyze, propose, validate)
 
