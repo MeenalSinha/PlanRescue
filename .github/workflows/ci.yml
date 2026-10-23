@@ -29,7 +29,7 @@ jobs:
         working-directory: apps/web
         run: |
           OUT=$(npm ci 2>&1) || {
-            echo "::error title=npm-ci-output::$(echo "$OUT" | tail -n 15 | tr '\n' ' ')"
+            echo "::error title=npm-ci-output::$(echo "$OUT" | head -n 25 | tr '\n' ' ')"
             echo "$OUT"
             exit 1
           }
