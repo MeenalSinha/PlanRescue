@@ -27,7 +27,7 @@ jobs:
         run: npm test
       - name: Install the web interface
         working-directory: apps/web
-        run: npm ci
+        run: npm ci --verbose
       - run: npm run typecheck:web
       - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
         run: npm run test:web
