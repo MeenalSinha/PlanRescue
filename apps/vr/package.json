@@ -2,23 +2,45 @@
   "name": "planrescue-spatial",
   "version": "0.1.0",
   "private": true,
-  "description": "PlanRescue Spatial: Immersive AI Schedule Recovery for Meta Quest (Phase 1 VR Foundation)",
+  "description": "PlanRescue Spatial: Immersive AI Schedule Recovery for Meta Quest",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "dev:iwsdk": "iwsdk dev restart --open --foreground",
+    "dev:runtime": "vite",
+    "dev:down": "iwsdk dev down",
+    "dev:status": "iwsdk dev status",
+    "reference:status": "iwsdk reference status",
+    "reference:warmup": "iwsdk reference warmup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
-    "three": "0.170.0",
+    "@iwsdk/core": "1.1.0",
+    "@pmndrs/uikit": "^1.0.74",
+    "@pmndrs/uikit-horizon": "^1.0.74",
+    "@pmndrs/uikit-lucide": "^1.0.74",
+    "three": "npm:super-three@0.185.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/three": "0.183.1",
+    "@iwsdk/cli": "1.1.0",
+    "@iwsdk/reference": "1.1.0",
+    "@iwsdk/vite-plugin-dev": "1.1.0",
+    "@meta-quest/metavr": "^1.8.1",
+    "@types/three": "^0.185.0",
     "@types/webxr": "0.5.24",
-    "typescript": "5.9.3",
-    "vite": "5.4.21"
+    "typescript": "^5.5.0",
+    "vite": "^7.1.4",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "sharp": "0.35.4",
+    "three": "npm:super-three@0.185.0"
+  },
+  "engines": {
+    "node": ">=20.19.0 <21.0.0-0 || >=22.12.0 <23.0.0-0 || >=24.0.0"
   }
 }

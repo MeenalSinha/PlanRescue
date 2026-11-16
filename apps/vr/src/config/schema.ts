@@ -34,7 +34,26 @@ export const vrConfigSchema = z.object({
     enableHandTracking: true,
     enableEmulation: true,
   }),
-});
+}).refine(
+  (data) => {
+    if (data.appEnv === 'production') {
+      try {
+        const url = new URL(data.apiBaseUrl);
+        const host = url.hostname.toLowerCase();
+        if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  },
+  {
+    message: 'Production environment cannot use localhost or loopback address for apiBaseUrl',
+    path: ['apiBaseUrl'],
+  },
+);
 
 export type VrConfig = z.infer<typeof vrConfigSchema>;
 

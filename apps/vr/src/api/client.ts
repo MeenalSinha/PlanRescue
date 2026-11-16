@@ -1,18 +1,24 @@
 import type {
-  ApiResponse,
-  ApplyPlanResponse,
-  ApprovePlanResponse,
+  ActionHistoryItem,
+  ApplyApprovedPlanOutput,
+  ApproveRecoveryPlanOutput,
   ConflictAnalysis,
   DashboardData,
   Disruption,
+  GetActionHistoryOutput,
+  RecoveryPlan,
   RecoveryPlanSet,
+  ValidationResult,
 } from './contracts';
 import {
-  dashboardDataSchema,
+  actionHistoryItemSchema,
+  applyApprovedPlanOutputSchema,
+  approveRecoveryPlanOutputSchema,
   conflictAnalysisSchema,
-  recoveryPlanSetSchema,
-  approvePlanResponseSchema,
-  applyPlanResponseSchema,
+  dashboardDataSchema,
+  getActionHistoryOutputSchema,
+  planSetSchema,
+  validationResultSchema,
 } from './contracts';
 import {
   ApiClientError,
@@ -86,7 +92,6 @@ export class PlanRescueApiClient {
       const abortController = new AbortController();
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-      // Link external caller signal to our controller
       const onCallerAbort = () => abortController.abort();
       if (callerSignal) {
         if (callerSignal.aborted) {
@@ -102,101 +107,118 @@ export class PlanRescueApiClient {
         callerSignal.addEventListener('abort', onCallerAbort);
       }
 
-      // Configure timeout
-      timeoutId = setTimeout(() => {
-        abortController.abort(new Error('TIMEOUT'));
-      }, timeoutMs);
-
-      const requestStartTime = performance.now();
-      logger.debug('ApiClient', `HTTP ${method} ${url.pathname} (Attempt ${attempt}/${maxAttempts})`);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          abortController.abort();
+          reject(new ApiTimeoutError(timeoutMs, url.pathname));
+        }, timeoutMs);
+      });
 
       try {
-        const response = await this.fetch(url.toString(), {
+        const headers: Record<string, string> = {
+          Accept: 'application/json',
+        };
+        if (body !== undefined) {
+          headers['Content-Type'] = 'application/json';
+        }
+
+        const fetchPromise = this.fetch(url.toString(), {
           method,
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: body ? JSON.stringify(body) : undefined,
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
           signal: abortController.signal,
         });
 
-        const elapsedMs = Math.round(performance.now() - requestStartTime);
-        logger.debug('ApiClient', `HTTP ${method} ${url.pathname} -> ${response.status} (${elapsedMs}ms)`);
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        if (timeoutId) clearTimeout(timeoutId);
 
-        let responseJson: ApiResponse<T>;
+        let jsonPayload: unknown = null;
         try {
-          responseJson = (await response.json()) as ApiResponse<T>;
-        } catch (jsonErr) {
-          throw new ApiClientError({
-            message: `Server returned non-JSON response (status ${response.status})`,
-            status: response.status,
-            code: 'invalid_json',
-            url: url.pathname,
-            userMessage: 'Server returned an unreadable response format.',
-            originalError: jsonErr,
-          });
+          jsonPayload = await response.json();
+        } catch {
+          jsonPayload = null;
         }
 
-        if (!response.ok || !responseJson.ok) {
-          const errPayload = responseJson.error ?? {
-            code: `http_${response.status}`,
-            message: response.statusText || 'Server error',
-          };
+        if (!response.ok) {
+          const errObj = (jsonPayload as { error?: { code?: string; message?: string } })?.error;
+          const status = response.status;
+          const isServerBusy = status === 503 || status === 429;
+          const recoverable = isIdempotent && isServerBusy;
 
-          throw new ApiClientError({
-            message: errPayload.message,
-            status: response.status,
-            code: errPayload.code,
+          const clientError = new ApiClientError({
+            message: errObj?.message ?? `HTTP error ${status}`,
+            status,
+            code: errObj?.code ?? `http_${status}`,
             url: url.pathname,
-            fieldErrors: errPayload.fields,
-            userMessage: errPayload.message,
+            userMessage:
+              status === 503
+                ? 'Backend service temporarily unavailable. Please retry.'
+                : status === 404
+                  ? 'Requested resource not found.'
+                  : 'An error occurred while communicating with the server.',
+            recoverable,
           });
+
+          if (recoverable && attempt < maxAttempts) {
+            const delayMs = attempt * 300;
+            logger.warn(`Retrying ${method} ${url.pathname} in ${delayMs}ms: ${clientError.message}`, 'ApiClient');
+            await new Promise((r) => setTimeout(r, delayMs));
+            lastError = clientError;
+            continue;
+          }
+
+          throw clientError;
         }
 
-        return {
-          data: responseJson.data as T,
-          activity: responseJson.activity,
-        };
-      } catch (err) {
-        if (abortController.signal.aborted) {
-          if (abortController.signal.reason instanceof Error && abortController.signal.reason.message === 'TIMEOUT') {
-            lastError = new ApiTimeoutError(timeoutMs, url.pathname);
-          } else {
-            lastError = new ApiClientError({
-              message: 'Request was cancelled',
-              status: 0,
-              code: 'aborted',
+        // Handle standard Next.js ApiResponse envelope: { ok: true, data: T, activity: [...] }
+        if (
+          jsonPayload !== null &&
+          typeof jsonPayload === 'object' &&
+          'ok' in jsonPayload
+        ) {
+          const env = jsonPayload as { ok: boolean; data?: T; error?: { code: string; message: string }; activity?: unknown[] };
+          if (!env.ok) {
+            throw new ApiClientError({
+              message: env.error?.message ?? 'API returned operational failure',
+              status: response.status,
+              code: env.error?.code ?? 'api_failure',
               url: url.pathname,
-              userMessage: 'The request was cancelled.',
+              userMessage: env.error?.message ?? 'Action could not be completed.',
               recoverable: false,
             });
-            throw lastError; // Do not retry aborted requests
           }
-        } else if (err instanceof ApiClientError) {
-          lastError = err;
-          // Only retry 502/503/504 for idempotent requests
-          if (!isIdempotent || (err.status < 500 && err.status !== 429)) {
-            throw err;
-          }
-        } else {
-          lastError = new ApiNetworkError(
-            err instanceof Error ? err.message : String(err),
-            url.pathname,
-            err,
-          );
-          if (!isIdempotent) {
-            throw lastError;
-          }
+          return { data: env.data as T, activity: env.activity };
         }
 
-        if (attempt < maxAttempts) {
-          const backoffMs = Math.min(attempt * 300, 1500);
-          logger.warn('ApiClient', `Retrying ${method} ${url.pathname} in ${backoffMs}ms: ${lastError.message}`);
-          await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        }
-      } finally {
+        return { data: jsonPayload as T };
+      } catch (err: unknown) {
         if (timeoutId) clearTimeout(timeoutId);
+
+        if (err instanceof ApiTimeoutError || err instanceof ApiClientError) {
+          if (err.recoverable && attempt < maxAttempts) {
+            lastError = err;
+            continue;
+          }
+          throw err;
+        }
+
+        const isNetworkErr = err instanceof TypeError || (err as Error)?.name === 'NetworkError';
+        const networkError = new ApiNetworkError(
+          err instanceof Error ? err.message : String(err),
+          url.pathname,
+          err,
+        );
+
+        if (isNetworkErr && isIdempotent && attempt < maxAttempts) {
+          const delayMs = attempt * 300;
+          logger.warn(`Network error on ${method} ${url.pathname}. Retrying in ${delayMs}ms`, 'ApiClient');
+          await new Promise((r) => setTimeout(r, delayMs));
+          lastError = networkError;
+          continue;
+        }
+
+        throw networkError;
+      } finally {
         if (callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
       }
     }
@@ -237,6 +259,7 @@ export class PlanRescueApiClient {
       startTime: string;
       endTime: string;
       disruption: Disruption;
+      protectedEventIds?: string[];
     },
     signal?: AbortSignal,
   ): Promise<ConflictAnalysis> {
@@ -259,7 +282,8 @@ export class PlanRescueApiClient {
   }
 
   /**
-   * POST /api/recovery/plans
+   * POST /api/recovery/propose
+   * Proposes recovery candidates using deterministic Recovery Engine and persists candidates when saveCandidates is true.
    */
   async proposePlans(
     payload: {
@@ -267,18 +291,20 @@ export class PlanRescueApiClient {
       endTime: string;
       disruption: Disruption;
       protectedEventIds?: string[];
+      saveCandidates?: boolean;
+      preferences?: { optimizeFor?: string };
     },
     signal?: AbortSignal,
   ): Promise<RecoveryPlanSet> {
     const result = await this.request<RecoveryPlanSet>({
       method: 'POST',
-      path: '/api/recovery/plans',
+      path: '/api/recovery/propose',
       body: payload,
       signal,
       isIdempotent: false,
     });
 
-    const parsed = recoveryPlanSetSchema.safeParse(result.data);
+    const parsed = planSetSchema.safeParse(result.data);
     if (!parsed.success) {
       throw new ApiValidationError(
         'Recovery plans payload validation failed',
@@ -289,17 +315,48 @@ export class PlanRescueApiClient {
   }
 
   /**
+   * POST /api/recovery/validate
+   * Submits a recovery plan to independent validator.
+   */
+  async validatePlan(
+    plan: RecoveryPlan,
+    signal?: AbortSignal,
+  ): Promise<ValidationResult> {
+    const result = await this.request<ValidationResult>({
+      method: 'POST',
+      path: '/api/recovery/validate',
+      body: plan,
+      signal,
+      isIdempotent: true,
+    });
+
+    const parsed = validationResultSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError(
+        'Validation result payload validation failed',
+        parsed.error.issues.map((i) => i.message),
+      );
+    }
+    return parsed.data;
+  }
+
+  /**
    * POST /api/recovery/plans/[planId]/approve
    */
-  async approvePlan(planId: string, signal?: AbortSignal): Promise<ApprovePlanResponse> {
-    const result = await this.request<ApprovePlanResponse>({
+  async approvePlan(
+    planId: string,
+    actor?: string,
+    signal?: AbortSignal,
+  ): Promise<ApproveRecoveryPlanOutput> {
+    const result = await this.request<ApproveRecoveryPlanOutput>({
       method: 'POST',
       path: `/api/recovery/plans/${encodeURIComponent(planId)}/approve`,
+      body: actor ? { actor } : undefined,
       signal,
       isIdempotent: false,
     });
 
-    const parsed = approvePlanResponseSchema.safeParse(result.data);
+    const parsed = approveRecoveryPlanOutputSchema.safeParse(result.data);
     if (!parsed.success) {
       throw new ApiValidationError(
         'Approve plan response validation failed',
@@ -312,18 +369,44 @@ export class PlanRescueApiClient {
   /**
    * POST /api/recovery/plans/[planId]/apply
    */
-  async applyPlan(planId: string, signal?: AbortSignal): Promise<ApplyPlanResponse> {
-    const result = await this.request<ApplyPlanResponse>({
+  async applyPlan(
+    planId: string,
+    options?: { actor?: string; expectedSnapshotHash?: string },
+    signal?: AbortSignal,
+  ): Promise<ApplyApprovedPlanOutput> {
+    const result = await this.request<ApplyApprovedPlanOutput>({
       method: 'POST',
       path: `/api/recovery/plans/${encodeURIComponent(planId)}/apply`,
+      body: options,
       signal,
       isIdempotent: false,
     });
 
-    const parsed = applyPlanResponseSchema.safeParse(result.data);
+    const parsed = applyApprovedPlanOutputSchema.safeParse(result.data);
     if (!parsed.success) {
       throw new ApiValidationError(
         'Apply plan response validation failed',
+        parsed.error.issues.map((i) => i.message),
+      );
+    }
+    return parsed.data;
+  }
+
+  /**
+   * GET /api/actions/history
+   */
+  async getActionHistory(signal?: AbortSignal): Promise<GetActionHistoryOutput> {
+    const result = await this.request<GetActionHistoryOutput>({
+      method: 'GET',
+      path: '/api/actions/history',
+      signal,
+      isIdempotent: true,
+    });
+
+    const parsed = getActionHistoryOutputSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError(
+        'Action history payload validation failed',
         parsed.error.issues.map((i) => i.message),
       );
     }

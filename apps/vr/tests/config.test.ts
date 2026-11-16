@@ -16,6 +16,30 @@ describe('VR Configuration System', () => {
     expect(config.xr.enableEmulation).toBe(true);
   });
 
+  it('rejects loopback/localhost apiBaseUrl in production', () => {
+    expect(() =>
+      validateConfig({
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        appEnv: 'production',
+      }),
+    ).toThrow(ConfigurationError);
+
+    expect(() =>
+      validateConfig({
+        apiBaseUrl: 'http://localhost:3000',
+        appEnv: 'production',
+      }),
+    ).toThrow(ConfigurationError);
+
+    // Valid production URL succeeds
+    const prodConfig = validateConfig({
+      apiBaseUrl: 'https://spatial.planrescue.app',
+      appEnv: 'production',
+    });
+    expect(prodConfig.appEnv).toBe('production');
+    expect(prodConfig.apiBaseUrl).toBe('https://spatial.planrescue.app');
+  });
+
   it('rejects missing apiBaseUrl', () => {
     expect(() => validateConfig({})).toThrow(ConfigurationError);
   });
@@ -78,5 +102,29 @@ describe('VR Configuration System', () => {
     expect(config.requestTimeoutMs).toBe(25000);
     expect(config.xr.enableHandTracking).toBe(false);
     expect(config.xr.enableEmulation).toBe(true);
+  });
+
+  it('rejects loopback/localhost apiBaseUrl in production', () => {
+    expect(() =>
+      validateConfig({
+        apiBaseUrl: 'http://127.0.0.1:3000',
+        appEnv: 'production',
+      }),
+    ).toThrow(ConfigurationError);
+
+    expect(() =>
+      validateConfig({
+        apiBaseUrl: 'http://localhost:3000',
+        appEnv: 'production',
+      }),
+    ).toThrow(ConfigurationError);
+
+    // Valid production URL succeeds
+    const prodConfig = validateConfig({
+      apiBaseUrl: 'https://spatial.planrescue.app',
+      appEnv: 'production',
+    });
+    expect(prodConfig.appEnv).toBe('production');
+    expect(prodConfig.apiBaseUrl).toBe('https://spatial.planrescue.app');
   });
 });

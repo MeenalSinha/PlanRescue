@@ -82,10 +82,18 @@ export class VrLogger {
     return LOG_LEVEL_SEVERITY[level] >= LOG_LEVEL_SEVERITY[this.currentLevel];
   }
 
-  private write(level: LogLevel, category: string, message: string, data?: Record<string, unknown>): void {
+  private write(level: LogLevel, category: string, message: string, data?: unknown): void {
     if (!this.shouldLog(level)) return;
 
-    const sanitizedData = data ? (redactSensitiveData(data) as Record<string, unknown>) : undefined;
+    let sanitizedData: Record<string, unknown> | undefined;
+    if (data instanceof Error) {
+      sanitizedData = { name: data.name, message: data.message, stack: data.stack };
+    } else if (data && typeof data === 'object') {
+      sanitizedData = redactSensitiveData(data as Record<string, unknown>) as Record<string, unknown>;
+    } else if (data !== undefined) {
+      sanitizedData = { value: String(data) };
+    }
+
     const record: LogRecord = {
       timestamp: new Date().toISOString(),
       level,
@@ -129,19 +137,19 @@ export class VrLogger {
     }
   }
 
-  debug(category: string, message: string, data?: Record<string, unknown>): void {
+  debug(category: string, message: string, data?: unknown): void {
     this.write('debug', category, message, data);
   }
 
-  info(category: string, message: string, data?: Record<string, unknown>): void {
+  info(category: string, message: string, data?: unknown): void {
     this.write('info', category, message, data);
   }
 
-  warn(category: string, message: string, data?: Record<string, unknown>): void {
+  warn(category: string, message: string, data?: unknown): void {
     this.write('warn', category, message, data);
   }
 
-  error(category: string, message: string, data?: Record<string, unknown>): void {
+  error(category: string, message: string, data?: unknown): void {
     this.write('error', category, message, data);
   }
 }

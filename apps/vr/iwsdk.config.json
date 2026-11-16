@@ -1,35 +1,58 @@
 {
-  "$schema": "https://developers.meta.com/iwsdk/schemas/iwsdk-project.v1.schema.json",
+  "$schema": "./node_modules/@iwsdk/core/dist/schemas/iwsdk-project.v1.schema.json",
   "version": "iwsdk.project.v1",
-  "name": "planrescue-spatial",
-  "title": "PlanRescue Spatial",
-  "description": "Your Day Changed. Reshape It With Your Hands. Immersive AI Schedule Recovery for Meta Quest.",
   "scene": "./public/scenes/main.iwsdk.scene.json",
+  "assets": {
+    "module": "./src/assets"
+  },
+  "components": {
+    "module": "./src/components"
+  },
   "world": {
     "xr": {
       "mode": "vr",
+      "offer": "always",
       "features": {
-        "handTracking": {
-          "required": true
-        },
-        "gazeTracking": false,
-        "planeDetection": false,
-        "meshDetection": false
+        "handTracking": true
+      }
+    },
+    "input": {
+      "canvasPointerEvents": true
+    },
+    "render": {
+      "fov": 70,
+      "near": 0.001,
+      "far": 200,
+      "camera": {
+        "position": [
+          0,
+          1.6,
+          1
+        ],
+        "lookAt": [
+          0,
+          0.95,
+          -1.95
+        ]
       }
     },
     "features": {
+      "locomotion": {
+        "useWorker": true
+      },
       "grabbing": true,
-      "locomotion": false,
       "physics": false,
-      "fieldOfViewMask": true
+      "sceneUnderstanding": false,
+      "environmentRaycast": false,
+      "spatialUI": {
+        "kit": "horizon",
+        "preferredColorScheme": "dark"
+      }
     }
   },
-  "emulator": {
-    "device": "metaQuest3",
-    "environment": "studio",
-    "activation": "localhost"
-  },
-  "input": {
-    "canvasPointerEvents": true
+  "dev": {
+    "emulator": {
+      "device": "metaQuest3"
+    }
   }
 }

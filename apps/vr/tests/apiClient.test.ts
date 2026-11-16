@@ -24,6 +24,8 @@ describe('PlanRescueApiClient', () => {
         },
       ],
       tasks: [],
+      baseline: null,
+      baselineError: null,
     };
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -150,6 +152,8 @@ describe('PlanRescueApiClient', () => {
             taskWindow: { startTime: '2026-10-22T00:00:00+05:30', endTime: '2026-10-26T00:00:00+05:30' },
             events: [],
             tasks: [],
+            baseline: null,
+            baselineError: null,
           },
         }),
       });
