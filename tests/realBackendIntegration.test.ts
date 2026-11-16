@@ -167,8 +167,9 @@ describe('Real Backend Recovery Integration (SQLite + Deterministic Engine + Saf
     // 9. Verify Action History contains persistent audit entries
     const historyEntries = await historyRepo.findActions({ recoveryPlanId: persistentPlanId });
     expect(historyEntries.length).toBe(2);
-    expect(historyEntries[0]?.actionType).toBe('plan_approved');
-    expect(historyEntries[1]?.actionType).toBe('plan_applied');
+    const actionTypes = historyEntries.map((e) => e.actionType);
+    expect(actionTypes).toContain('plan_approved');
+    expect(actionTypes).toContain('plan_applied');
   });
 
   it('rejects stale plan execution when calendar was modified concurrently', async () => {

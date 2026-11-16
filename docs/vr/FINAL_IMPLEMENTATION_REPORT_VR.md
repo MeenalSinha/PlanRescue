@@ -27,7 +27,7 @@ All eight product phases (Phases 0 through 8) have been fully implemented, integ
 
 ### 1. Phase 0 Audit Verification
 The repository was independently audited across its backend and web frontend:
-- **Backend Architecture:** Confirmed operational Node.js 22 + TypeScript backend with Streamable HTTP MCP server (`apps/mcp-server`), SQLite persistence with versioned migrations (`data/planrescue.sqlite`), deterministic Recovery Engine with three distinct strategies (`minimal_disruption`, `preserve_priorities`, `balanced`), SHA-256 state snapshot hashing, atomic transaction execution, and comprehensive Recovery Decision Reports.
+- **Backend Architecture:** Confirmed operational Node.js 22 + TypeScript backend with Streamable HTTP MCP server (`apps/mcp-server`), SQLite persistence with versioned migrations (`data/planrescue.sqlite`), deterministic Recovery Engine with three distinct strategies (`minimal_disruption`, `buffered_transitions`, `priority_first`), SHA-256 state snapshot hashing, atomic transaction execution, and comprehensive Recovery Decision Reports.
 - **Baseline Verification:** 231 backend unit tests, 11 report tests, 3 migration tests, and 114 Next.js web unit tests were verified passing prior to spatial implementation.
 - **Integration Boundary:** Confirmed that client-side browser/WebXR applications cannot and must not communicate directly with SQLite or the raw Streamable HTTP MCP port (3001) due to origin security boundaries and credential protection. All spatial requests are routed through authenticated Next.js server route handlers (`apps/web/src/app/api/...`), preserving single-source-of-truth invariants.
 
@@ -95,8 +95,8 @@ An audit of Phase 1 revealed that the initial snapshot lacked the official Meta 
   - Triggers `proposeRecovery()` via `PlanRescueApiClient` with `saveCandidates: true`.
   - Captures server-generated candidate plans across all three deterministic strategies:
     1. `minimal_disruption`: Minimizes number of moved events and total shift minutes.
-    2. `preserve_priorities`: Defends high-priority commitments by displacing lower-priority items.
-    3. `balanced`: Balanced trade-off curve across schedule disruption and task deadlines.
+    2. `buffered_transitions`: Provides protective breathing buffers between rescheduled events.
+    3. `priority_first`: Defends high-priority commitments by displacing lower-priority items.
   - Captures SQLite `persistentId` and `savedStatus` directly from backend route handlers.
   - Computes penalty decompositions (delay penalty, event movement penalty, task overflow penalty).
 - **PlanRescue AI Assistant Panel (`apps/vr/src/assistant/spatialAssistant.ts`):** 
@@ -189,7 +189,7 @@ The complete end-to-end user recovery journey was implemented and verified throu
 10. **Milestone 10 (AI Assistant):** PlanRescue AI displays grounded natural explanation of trade-offs and protected commitments.
 11. **Milestone 11 (Comparison):** Dual-Track Workspace renders Before and After tracks, highlighting moved events.
 12. **Milestone 12 (Validation):** Validation Explorer verifies hard constraints (working hours, fixed locks) and warnings.
-13. **Milestone 13 (Selection):** User toggles between `minimal_disruption` and `preserve_priorities` candidates.
+13. **Milestone 13 (Selection):** User toggles between `minimal_disruption` and `buffered_transitions` candidates.
 14. **Milestone 14 (Approval):** User clicks "Approve Plan Proposal"; status updates to approved; calendar remains unmutated.
 15. **Milestone 15 (Execution):** User confirms "Confirm & Execute Schedule Changes"; backend atomically updates SQLite calendar.
 16. **Milestone 16 (Audit):** Spatial Timeline refreshes with recovered schedule; Action History panel appends execution record.

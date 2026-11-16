@@ -190,7 +190,7 @@ Implement `SpatialDisruptionPanel` and `SpatialConflictVisualizer`:
 ## ADR-011: Server-Grounded Multi-Strategy Recovery Engine Integration
 
 ### Context
-AI schedule recovery must never hallucinate options or invent scheduling scores on the client. It must execute the deterministic backend engine across all three strategies (`minimal_disruption`, `preserve_priorities`, `balanced`).
+AI schedule recovery must never hallucinate options or invent scheduling scores on the client. It must execute the deterministic backend engine across all three strategies (`minimal_disruption`, `buffered_transitions`, `priority_first`).
 
 ### Decision
 Implement `SpatialRecoveryManager` and `SpatialAssistantPanel`:

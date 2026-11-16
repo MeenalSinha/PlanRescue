@@ -16,7 +16,7 @@ Users can:
 - Explore their daily schedule in an immersive three-dimensional space with glassmorphic cards and priority color stripes.
 - Move schedule blocks naturally with direct ray or pinch-grab gestures, snapping to 15-minute increments while respecting locked/fixed events.
 - Report unexpected schedule disruptions (e.g., meeting overruns) with bounded parameters (1–240 min) and immediate downstream conflict visualization.
-- Receive deterministic, consequence-aware recovery alternatives powered by the PlanRescue Recovery Engine across all three strategies (`minimal_disruption`, `preserve_priorities`, `balanced`).
+- Receive deterministic, consequence-aware recovery alternatives powered by the PlanRescue Recovery Engine across all three strategies (`minimal_disruption`, `buffered_transitions`, `priority_first`).
 - Compare candidate recovery plans spatially side-by-side on a dual-track Before/After timeline with difference highlighting and independent validation checks.
 - Step through an enforced two-step safety lifecycle: Candidate selection -> Explicit Approval -> Separate Execution Confirmation, with automatic stale-plan detection.
 - Inspect their persistent audit trail and recovery history spatially.
