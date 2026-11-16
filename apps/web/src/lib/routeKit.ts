@@ -8,6 +8,9 @@ import { McpCallError, type ToolCallSuccess } from './mcpClient';
 
 const STATUS: Record<ApiErrorCode, number> = {
   invalid_request: 400,
+  unauthorized: 401,
+  forbidden: 403,
+  conflict: 409,
   payload_too_large: 413,
   mcp_tool_error: 422,
   mcp_unavailable: 503,
@@ -22,7 +25,7 @@ const STATUS: Record<ApiErrorCode, number> = {
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
-export function ok<T>(data: T, activity: ToolActivity[]): NextResponse {
+export function ok<T>(data: T, activity: ToolActivity[] = []): NextResponse {
   const body: ApiResponse<T> = { ok: true, data, activity };
   return NextResponse.json(body, { status: 200, headers: NO_STORE });
 }

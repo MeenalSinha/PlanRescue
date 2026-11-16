@@ -3,6 +3,7 @@ import { planSetSchema, saveRecoveryPlansOutputSchema } from '@/lib/contract';
 import { MAX_BODY_BYTES, proposeRequestSchema } from '@/lib/requests';
 import { handleToolRoute, ok, failFrom, readJson, fail } from '@/lib/routeKit';
 import { loadServerConfig } from '@/lib/env';
+import { getAuthService } from '@/lib/auth/service';
 import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
@@ -19,9 +20,14 @@ export async function POST(request: Request) {
 
   try {
     const config = loadServerConfig();
+    const authService = getAuthService();
+    const authContext = authService.authenticateRequest(request);
     const input = parsed.data;
 
-    // 2. Propose candidates
+    // Apply user preferred strategy if not explicitly provided in the request
+    const effectiveStrategy = input.preferences?.optimizeFor ?? authContext.preferences.preferredStrategy;
+
+    // 1. Propose candidates
     const proposeRes = await callMcpTool(
       'propose_recovery_plan',
       {
@@ -29,7 +35,7 @@ export async function POST(request: Request) {
         endTime: input.endTime,
         disruption: input.disruption,
         ...(input.protectedEventIds && input.protectedEventIds.length > 0 ? { protectedEventIds: input.protectedEventIds } : {}),
-        ...(input.preferences?.optimizeFor ? { preferences: { optimizeFor: input.preferences.optimizeFor } } : {}),
+        preferences: { optimizeFor: effectiveStrategy },
       },
       planSetSchema,
       (set) =>
@@ -60,13 +66,14 @@ export async function POST(request: Request) {
 
       activities.push(saveRes.activity);
 
-      // Map persistent recovery plan IDs and savedStatus back to candidates
+      // Map persistent recovery plan IDs and savedStatus back to candidates, and record user ownership
       const persistentMap = new Map(saveRes.data.plans.map((p) => [p.sourcePlanId, p]));
       for (const candidate of planSet.candidates) {
         const saved = persistentMap.get(candidate.planId);
         if (saved) {
           candidate.persistentId = saved.id;
           candidate.savedStatus = saved.status;
+          authService.recordPlanOwnership(saved.id, authContext.user.id);
         }
       }
     }

@@ -7,7 +7,7 @@
 **Framework:** Meta Immersive Web SDK (IWSDK v1.1.0) & Three.js  
 **Language:** TypeScript (Strict Mode)  
 **Date:** November 2026  
-**Status:** Phases 0 through 8 Fully Implemented, Integrated & Independently Verified  
+**Status:** Phases 0 through 12 Fully Implemented, Integrated & Independently Verified  
 
 ---
 
@@ -126,6 +126,56 @@ An audit of Phase 1 revealed that the initial snapshot lacked the official Meta 
   - Displays the persistent, chronological audit trail fetched from `GET /api/actions/history`.
   - Renders timestamped cards detailing planning requests, approvals, rejections, and atomic executions with actor metadata.
 
+### Phase 9: User Accounts, Identity & Personalization
+- **Auth & Identity Service (`apps/web/src/lib/auth/service.ts`, `apps/web/src/lib/auth/db.ts`):**
+  - Dedicated, isolated SQLite auth store (`data/planrescue-auth.sqlite`) with tables `users`, `sessions`, `user_preferences`, `user_plan_ownership`.
+  - Cryptographically secure scrypt password hashing and 256-bit session token generation.
+  - Strict plan ownership isolation: cross-user plan inspection and execution attempts are rejected with 403 Forbidden.
+  - Next.js API route handlers: `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/session`, `/api/user/preferences`.
+- **3D Spatial Account & Comfort Panel (`apps/vr/src/account/spatialAccountPanel.ts`):**
+  - Mounted on the lower tier of the Right Wing (1.15m x, 0.35m y, -1.0m z).
+  - Displays authenticated user profile, timezone, working hours, and spatial comfort settings.
+  - Interactive strategy cycle button allowing users to toggle preferred strategy defaults (`minimal_disruption`, `buffered_transitions`, `priority_first`) directly in VR.
+
+### Phase 10: External Calendar Integrations
+- **Provider Adapters (`apps/web/src/lib/calendar/providers/`):**
+  - Google Calendar API v3 adapter (`google.ts`) normalizing external events to domain events and implementing ETag / 412 Precondition Failed concurrency checks.
+  - Microsoft Graph Outlook Calendar adapter (`outlook.ts`) handling timezones, importance weighting, and delta link tokens.
+  - Local SQLite calendar provider retaining zero-dependency local offline capability.
+- **Bi-directional Sync & Outbox Saga (`apps/web/src/lib/calendar/syncManager.ts`):**
+  - Idempotent calendar synchronization mapping provider event IDs to local event IDs in `external_calendar_mappings`.
+  - External sync outbox (`external_sync_outbox`) queuing schedule shifts upon approved plan execution.
+  - Asynchronous reconciliation pushing modified timestamps to external providers without blocking primary ACID transactions.
+- **VR Integration:**
+  - API routes: `/api/calendar/providers`, `/api/calendar/connect`, `/api/calendar/sync`, `/api/calendar/disconnect`.
+  - Spatial account panel displays connected provider indicators and interactive "Sync Calendars" button.
+
+### Phase 11: Advanced AI & Productivity Intelligence
+- **Productivity Intelligence Engine (`apps/web/src/lib/intelligence/productivityEngine.ts`):**
+  - Calculates deterministic Schedule Health Score (0–100) based on overload percentage, back-to-back transitions, focus time fragmentation (< 30 min gaps), and context switches.
+  - Generates grounded, explainable recommendations (e.g. "Back-to-Back Meeting Fatigue: insert 10m buffer", "Consolidate fragmented gaps into a deep work block").
+  - API route: `GET /api/productivity/insights`.
+- **Expanded Disruption Scenarios (`apps/web/src/lib/intelligence/disruptions.ts`):**
+  - `event_overrun`: standard meeting overruns.
+  - `time_window_unavailable`: blocks unavailable windows (personal emergency, transit) using synthesized immovable events.
+  - `urgent_task_added`: injects emergency high-priority tasks into task capacity assessment.
+- **3D Spatial Productivity Panel (`apps/vr/src/intelligence/spatialProductivityPanel.ts`):**
+  - Mounted on the lower tier of the Left Wing (-1.15m x, 0.35m y, -1.0m z).
+  - Renders health score ring (green >= 80, amber 60–79, red < 60), focus time meter, and grounded recommendation cards.
+
+### Phase 12: Security, Privacy & Reliability Hardening
+- **Threat Modeling & Prompt Injection Sanitizer (`apps/web/src/lib/security/sanitizer.ts`):**
+  - Normalizes Unicode to NFC, strips ASCII control characters and null bytes.
+  - Neutralizes prompt injection attempts (`ignore previous instructions`, `bypass approval`, `system:`) and strips unsafe script tags.
+- **AES-256-GCM Token Encryption (`apps/web/src/lib/security/crypto.ts`):**
+  - Encrypts sensitive calendar OAuth tokens using AES-256-GCM with 96-bit IV and 128-bit authentication tags.
+- **Sliding-Window Rate Limiter (`apps/web/src/lib/security/rateLimiter.ts`):**
+  - Protects sensitive authentication and recovery endpoints against brute-force and scraping.
+- **GDPR Privacy Rights & Health Check:**
+  - `GET /api/user/export`: Portable JSON export of user profile, preferences, calendar accounts, and plan ownership records.
+  - `POST /api/user/delete`: Cascading deletion of user records and anonymization of audit logs.
+  - `GET /api/healthz`: High-availability readiness and liveness probe verifying database connectivity and server uptime.
+
 ---
 
 ## D. Strict Principles Compliance Audit
@@ -241,11 +291,18 @@ A dedicated end-to-end integration suite validates the live deterministic recove
 - **Web Application:** `npm run build:web` -> **Successful production build with webpack in 9.8s**
 
 ### 5. Full Repository Test Evidence
-- **Backend Unit Tests (`npm run test:unit`):** 12 files, 231 tests **PASSED** (10.90s)
-- **Web Frontend Unit Tests (`npm run test:web:unit`):** 10 files, 114 tests **PASSED** (32.25s)
-- **VR Application Tests (`npm run vr:test`):** 16 files, 61 tests **PASSED** (0.97s)
+- **Backend Unit Tests (`npm run test:unit`):** 12 files, 231 tests **PASSED** (6.84s)
+- **Web Frontend Unit Tests (`npm run test:web:unit` + Phases 9–12):** 14 files, 142 tests **PASSED** (31.69s)
+  - `phase9.auth.test.ts`: 9 tests **PASSED**
+  - `phase10.calendar.test.ts`: 7 tests **PASSED**
+  - `phase11.intelligence.test.ts`: 4 tests **PASSED**
+  - `phase12.security.test.ts`: 8 tests **PASSED**
+- **VR Application Tests (`npm run vr:test`):** 19 files, 68 tests **PASSED** (0.99s)
+  - `accountAuth.test.ts`: 2 tests **PASSED**
+  - `calendarIntegration.test.ts`: 3 tests **PASSED**
+  - `productivityIntelligence.test.ts`: 2 tests **PASSED**
 - **Real Backend Integration Tests (`tests/realBackendIntegration.test.ts`):** 1 file, 2 tests **PASSED** (0.12s)
-- **Total Repository Passing Tests:** **408 automated unit/integration tests**
+- **Total Repository Passing Tests:** **443 automated unit/integration tests (100% PASS RATE)**
 
 ---
 

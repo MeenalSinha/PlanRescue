@@ -331,3 +331,130 @@ export const apiEnvelopeSchema = <T extends z.ZodTypeAny>(dataSchema: T) =>
       activity: z.array(toolActivitySchema).optional(),
     }),
   ]);
+
+// Phase 9: User Accounts, Identity & Personalization
+export const userSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  displayName: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).passthrough();
+export type User = z.infer<typeof userSchema>;
+
+export const focusPeriodSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  daysOfWeek: z.array(z.string()),
+}).passthrough();
+export type FocusPeriod = z.infer<typeof focusPeriodSchema>;
+
+export const spatialComfortSchema = z.object({
+  viewDistance: z.number().default(1.4),
+  handRayEnabled: z.boolean().default(true),
+  hapticFeedback: z.boolean().default(true),
+}).passthrough();
+export type SpatialComfort = z.infer<typeof spatialComfortSchema>;
+
+export const userPreferencesSchema = z.object({
+  userId: z.string(),
+  timezone: z.string().default('Asia/Kolkata'),
+  workingDays: z.array(z.string()).default(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']),
+  workingHoursStart: z.string().default('09:00'),
+  workingHoursEnd: z.string().default('18:00'),
+  preferredStrategy: z.enum(['minimal_disruption', 'buffered_transitions', 'priority_first']).default('minimal_disruption'),
+  preferredBufferMinutes: z.number().default(10),
+  focusPeriods: z.array(focusPeriodSchema).default([]),
+  spatialComfort: spatialComfortSchema.default({
+    viewDistance: 1.4,
+    handRayEnabled: true,
+    hapticFeedback: true,
+  }),
+  updatedAt: z.string(),
+}).passthrough();
+export type UserPreferences = z.infer<typeof userPreferencesSchema>;
+
+export const authResponseSchema = z.object({
+  user: userSchema,
+  sessionToken: z.string(),
+  preferences: userPreferencesSchema,
+}).passthrough();
+export type AuthResponse = z.infer<typeof authResponseSchema>;
+
+export const sessionResponseSchema = z.object({
+  user: userSchema,
+  preferences: userPreferencesSchema,
+  isAuthenticated: z.boolean(),
+}).passthrough();
+export type SessionResponse = z.infer<typeof sessionResponseSchema>;
+
+// Phase 10: External Calendar Schemas
+export const calendarAccountSchema = z.object({
+  id: z.string(),
+  provider: z.enum(['google', 'outlook', 'local']),
+  accountEmail: z.string().optional().nullable(),
+  status: z.enum(['connected', 'syncing', 'error', 'disconnected']),
+  lastSyncAt: z.number().optional().nullable(),
+  errorMessage: z.string().optional().nullable(),
+}).passthrough();
+export type CalendarAccount = z.infer<typeof calendarAccountSchema>;
+
+export const calendarProviderItemSchema = z.object({
+  id: z.enum(['google', 'outlook', 'local']),
+  name: z.string(),
+  description: z.string(),
+  connected: z.boolean(),
+  accountEmail: z.string().optional().nullable(),
+  lastSyncAt: z.number().optional().nullable(),
+}).passthrough();
+export type CalendarProviderItem = z.infer<typeof calendarProviderItemSchema>;
+
+export const calendarProvidersResponseSchema = z.object({
+  providers: z.array(calendarProviderItemSchema),
+}).passthrough();
+export type CalendarProvidersResponse = z.infer<typeof calendarProvidersResponseSchema>;
+
+export const calendarSyncResponseSchema = z.object({
+  success: z.boolean(),
+  provider: z.string(),
+  importedCount: z.number(),
+  updatedCount: z.number(),
+  timestamp: z.string(),
+}).passthrough();
+export type CalendarSyncResponse = z.infer<typeof calendarSyncResponseSchema>;
+
+// Phase 11: Productivity Intelligence Schemas
+export const productivityMetricsSchema = z.object({
+  healthScore: z.number().min(0).max(100),
+  totalScheduledMinutes: z.number(),
+  totalWorkingMinutes: z.number(),
+  focusTimeMinutes: z.number(),
+  fragmentedMinutes: z.number(),
+  backToBackCount: z.number(),
+  overloadPercentage: z.number(),
+  contextSwitches: z.number(),
+}).passthrough();
+export type ProductivityMetrics = z.infer<typeof productivityMetricsSchema>;
+
+export const productivityRecommendationSchema = z.object({
+  id: z.string(),
+  type: z.enum(['buffer_needed', 'consolidate_focus', 'reduce_overload', 'task_protection']),
+  severity: z.enum(['low', 'medium', 'high']),
+  title: z.string(),
+  description: z.string(),
+  suggestedAction: z.string(),
+}).passthrough();
+export type ProductivityRecommendation = z.infer<typeof productivityRecommendationSchema>;
+
+export const productivityInsightsSchema = z.object({
+  date: z.string(),
+  metrics: productivityMetricsSchema,
+  recommendations: z.array(productivityRecommendationSchema),
+  summary: z.string(),
+}).passthrough();
+export type ProductivityInsights = z.infer<typeof productivityInsightsSchema>;
+
+
+

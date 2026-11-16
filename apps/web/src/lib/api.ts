@@ -30,6 +30,9 @@ export interface ToolActivity {
 
 export type ApiErrorCode =
   | 'invalid_request'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'conflict'
   | 'payload_too_large'
   | 'mcp_unavailable'
   | 'mcp_timeout'

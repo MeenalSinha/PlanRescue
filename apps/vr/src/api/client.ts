@@ -2,22 +2,34 @@ import type {
   ActionHistoryItem,
   ApplyApprovedPlanOutput,
   ApproveRecoveryPlanOutput,
+  AuthResponse,
   ConflictAnalysis,
   DashboardData,
   Disruption,
   GetActionHistoryOutput,
   RecoveryPlan,
   RecoveryPlanSet,
+  SessionResponse,
+  UserPreferences,
   ValidationResult,
+  CalendarProvidersResponse,
+  CalendarSyncResponse,
+  ProductivityInsights,
 } from './contracts';
 import {
   actionHistoryItemSchema,
   applyApprovedPlanOutputSchema,
   approveRecoveryPlanOutputSchema,
+  authResponseSchema,
+  calendarProvidersResponseSchema,
+  calendarSyncResponseSchema,
   conflictAnalysisSchema,
   dashboardDataSchema,
   getActionHistoryOutputSchema,
   planSetSchema,
+  productivityInsightsSchema,
+  sessionResponseSchema,
+  userPreferencesSchema,
   validationResultSchema,
 } from './contracts';
 import {
@@ -50,12 +62,21 @@ export class PlanRescueApiClient {
   private readonly defaultTimeoutMs: number;
   private readonly maxRetries: number;
   private readonly fetch: typeof fetch;
+  private authToken: string | null = null;
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.defaultTimeoutMs = options.timeoutMs ?? 15000;
     this.maxRetries = options.maxRetries ?? 2;
     this.fetch = options.fetchFn ?? (typeof fetch !== 'undefined' ? fetch : (null as unknown as typeof fetch));
+  }
+
+  setAuthToken(token: string | null): void {
+    this.authToken = token;
+  }
+
+  getAuthToken(): string | null {
+    return this.authToken;
   }
 
   getBaseUrl(): string {
@@ -118,6 +139,9 @@ export class PlanRescueApiClient {
         const headers: Record<string, string> = {
           Accept: 'application/json',
         };
+        if (this.authToken) {
+          headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
         if (body !== undefined) {
           headers['Content-Type'] = 'application/json';
         }
@@ -409,6 +433,162 @@ export class PlanRescueApiClient {
         'Action history payload validation failed',
         parsed.error.issues.map((i) => i.message),
       );
+    }
+    return parsed.data;
+  }
+
+  // Phase 9: Authentication & Personalization APIs
+
+  async register(input: { email: string; password: string; displayName: string }, signal?: AbortSignal): Promise<AuthResponse> {
+    const result = await this.request<AuthResponse>({
+      method: 'POST',
+      path: '/api/auth/register',
+      body: input,
+      signal,
+      isIdempotent: false,
+    });
+    const parsed = authResponseSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Register response validation failed', parsed.error.issues.map((i) => i.message));
+    }
+    this.setAuthToken(parsed.data.sessionToken);
+    return parsed.data;
+  }
+
+  async login(input: { email: string; password: string }, signal?: AbortSignal): Promise<AuthResponse> {
+    const result = await this.request<AuthResponse>({
+      method: 'POST',
+      path: '/api/auth/login',
+      body: input,
+      signal,
+      isIdempotent: false,
+    });
+    const parsed = authResponseSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Login response validation failed', parsed.error.issues.map((i) => i.message));
+    }
+    this.setAuthToken(parsed.data.sessionToken);
+    return parsed.data;
+  }
+
+  async logout(signal?: AbortSignal): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>({
+      method: 'POST',
+      path: '/api/auth/logout',
+      signal,
+      isIdempotent: false,
+    });
+    this.setAuthToken(null);
+    return result.data;
+  }
+
+  async getSession(signal?: AbortSignal): Promise<SessionResponse> {
+    const result = await this.request<SessionResponse>({
+      method: 'GET',
+      path: '/api/auth/session',
+      signal,
+      isIdempotent: true,
+    });
+    const parsed = sessionResponseSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Session response validation failed', parsed.error.issues.map((i) => i.message));
+    }
+    return parsed.data;
+  }
+
+  async getPreferences(signal?: AbortSignal): Promise<UserPreferences> {
+    const result = await this.request<UserPreferences>({
+      method: 'GET',
+      path: '/api/user/preferences',
+      signal,
+      isIdempotent: true,
+    });
+    const parsed = userPreferencesSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Preferences response validation failed', parsed.error.issues.map((i) => i.message));
+    }
+    return parsed.data;
+  }
+
+  async updatePreferences(preferences: Partial<UserPreferences>, signal?: AbortSignal): Promise<UserPreferences> {
+    const result = await this.request<UserPreferences>({
+      method: 'PUT',
+      path: '/api/user/preferences',
+      body: preferences,
+      signal,
+      isIdempotent: false,
+    });
+    const parsed = userPreferencesSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Update preferences response validation failed', parsed.error.issues.map((i) => i.message));
+    }
+    return parsed.data;
+  }
+
+  async getCalendarProviders(signal?: AbortSignal): Promise<CalendarProvidersResponse> {
+    const result = await this.request<CalendarProvidersResponse>({
+      method: 'GET',
+      path: '/api/calendar/providers',
+      signal,
+      isIdempotent: true,
+    });
+    const parsed = calendarProvidersResponseSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Calendar providers response validation failed', parsed.error.issues.map((i) => i.message));
+    }
+    return parsed.data;
+  }
+
+  async connectCalendar(provider: 'google' | 'outlook' | 'local', accountEmail?: string, signal?: AbortSignal): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>({
+      method: 'POST',
+      path: '/api/calendar/connect',
+      body: { provider, accountEmail },
+      signal,
+      isIdempotent: false,
+    });
+    return result.data;
+  }
+
+  async syncCalendar(provider: 'google' | 'outlook' | 'local', signal?: AbortSignal): Promise<CalendarSyncResponse> {
+    const result = await this.request<CalendarSyncResponse>({
+      method: 'POST',
+      path: '/api/calendar/sync',
+      body: { provider },
+      signal,
+      isIdempotent: false,
+    });
+    const parsed = calendarSyncResponseSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Calendar sync response validation failed', parsed.error.issues.map((i) => i.message));
+    }
+    return parsed.data;
+  }
+
+  async disconnectCalendar(provider: 'google' | 'outlook' | 'local', signal?: AbortSignal): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>({
+      method: 'POST',
+      path: '/api/calendar/disconnect',
+      body: { provider },
+      signal,
+      isIdempotent: false,
+    });
+    return result.data;
+  }
+
+  async getProductivityInsights(date?: string, signal?: AbortSignal): Promise<ProductivityInsights> {
+    const params: Record<string, string> = {};
+    if (date) params.date = date;
+    const result = await this.request<ProductivityInsights>({
+      method: 'GET',
+      path: '/api/productivity/insights',
+      params,
+      signal,
+      isIdempotent: true,
+    });
+    const parsed = productivityInsightsSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ApiValidationError('Productivity insights response validation failed', parsed.error.issues.map((i) => i.message));
     }
     return parsed.data;
   }

@@ -6,6 +6,7 @@ import { McpCallError, callMcpTool } from '@/lib/mcpClient';
 import { dashboardQuerySchema, fieldErrors } from '@/lib/requests';
 import { fail, failFrom, ok } from '@/lib/routeKit';
 import { addDays, dayWindow, isValidDate, offsetForZone, withOffset } from '@/lib/time';
+import { getAuthService } from '@/lib/auth/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,8 +23,12 @@ export async function GET(request: Request) {
   const activity: ToolActivity[] = [];
   try {
     const config = loadServerConfig();
-    const window = dayWindow(date, config.calendarTimeZone);
-    const taskWindow = { startTime: window.startTime, endTime: dayWindow(addDays(date, TASK_LOOKAHEAD_DAYS), config.calendarTimeZone).startTime };
+    const authService = getAuthService();
+    const authContext = authService.authenticateRequest(request);
+    const effectiveZone = authContext.preferences.timezone || config.calendarTimeZone;
+
+    const window = dayWindow(date, effectiveZone);
+    const taskWindow = { startTime: window.startTime, endTime: dayWindow(addDays(date, TASK_LOOKAHEAD_DAYS), effectiveZone).startTime };
 
     const [schedule, tasks] = await Promise.allSettled([
       callMcpTool('get_schedule', window, scheduleOutputSchema, (s) => `${s.count} event${s.count === 1 ? '' : 's'}`, config),
@@ -40,7 +45,7 @@ export async function GET(request: Request) {
 
     // Baseline analysis of the stored schedule across the default working window. Optional: a failure
     // here is reported but does not stop the dashboard.
-    const offset = offsetForZone(date, config.calendarTimeZone);
+    const offset = offsetForZone(date, effectiveZone);
     const baselineWindow = { startTime: withOffset(`${date}T${DEFAULT_PLANNING_START}`, offset), endTime: withOffset(`${date}T${DEFAULT_PLANNING_END}`, offset) };
     let baseline: DashboardData['baseline'] = null;
     let baselineError: string | null = null;

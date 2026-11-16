@@ -13,6 +13,11 @@ export function isIsoWithOffset(value: string): boolean {
   return ISO_WITH_OFFSET.test(value) && !Number.isNaN(Date.parse(value));
 }
 
+export function toEpochMs(iso: string): number {
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
 /** "+05:30" of a timestamp ("Z" becomes "+00:00"). */
 export function offsetOf(iso: string): string {
   const m = /(Z|[+-]\d{2}:\d{2})$/.exec(iso);

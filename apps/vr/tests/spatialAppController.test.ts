@@ -62,6 +62,24 @@ describe('SpatialAppController (Runtime Application Orchestration)', () => {
   const mockApi = {
     getDashboard: vi.fn().mockResolvedValue(mockDashboard),
     getActionHistory: vi.fn().mockResolvedValue(mockHistory),
+    getSession: vi.fn().mockResolvedValue({
+      user: { id: 'usr-1', email: 'test@example.com', displayName: 'Test User', createdAt: '', updatedAt: '' },
+      preferences: {
+        userId: 'usr-1',
+        timezone: 'Asia/Kolkata',
+        workingDays: ['monday', 'tuesday'],
+        workingHoursStart: '09:00',
+        workingHoursEnd: '18:00',
+        preferredStrategy: 'minimal_disruption',
+        preferredBufferMinutes: 10,
+        focusPeriods: [],
+        spatialComfort: { viewDistance: 1.4, handRayEnabled: true, hapticFeedback: true },
+        updatedAt: '',
+      },
+      isAuthenticated: true,
+    }),
+    updatePreferences: vi.fn().mockResolvedValue({}),
+    logout: vi.fn().mockResolvedValue({ success: true }),
     analyzeDisruption: vi.fn(),
     proposePlans: vi.fn(),
     validatePlan: vi.fn(),
@@ -93,12 +111,14 @@ describe('SpatialAppController (Runtime Application Orchestration)', () => {
     expect(controller.validationExplorer).toBeDefined();
     expect(controller.approvalWorkflow).toBeDefined();
     expect(controller.actionHistoryPanel).toBeDefined();
+    expect(controller.accountPanel).toBeDefined();
 
     // Verify scene contains the panels
     expect(world.scene.children).toContain(controller.timeline.group);
     expect(world.scene.children).toContain(controller.taskPanel.group);
     expect(world.scene.children).toContain(controller.disruptionPanel.group);
     expect(world.scene.children).toContain(controller.assistantPanel.group);
+    expect(world.scene.children).toContain(controller.accountPanel.group);
 
     controller.dispose();
     world.dispose();

@@ -402,6 +402,31 @@ export class SpatialButton extends SpatialUIElement {
     return this;
   }
 
+  setLabel(label: string, textColor: string | number = SPATIAL_PALETTE.textPrimary): void {
+    const existing = this.group.children.find((c) => c instanceof THREE.Mesh && c !== this.mesh);
+    if (existing && existing instanceof THREE.Mesh) {
+      this.group.remove(existing);
+      existing.geometry.dispose();
+      if (existing.material) (existing.material as THREE.Material).dispose();
+    }
+    const width = (this.mesh.geometry as THREE.BoxGeometry).parameters.width;
+    const { texture, aspect } = createTextTexture(label, {
+      fontSize: 20,
+      fontWeight: '600',
+      color: textColor,
+      width: 256,
+      height: 64,
+    });
+    const labelW = width * 0.85;
+    const labelH = labelW / aspect;
+    const textMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(labelW, labelH),
+      new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+    );
+    textMesh.position.z = SPATIAL_DIMENSIONS.buttonDepth / 2 + 0.002;
+    this.group.add(textMesh);
+  }
+
   triggerClick(): void {
     if (this.onClickHandler) {
       this.onClickHandler();

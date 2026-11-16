@@ -18,6 +18,8 @@ import { SpatialComparisonWorkspace } from '../comparison/comparisonWorkspace';
 import { SpatialValidationExplorer } from '../comparison/validationExplorer';
 import { SpatialApprovalWorkflow } from '../execution/approvalWorkflow';
 import { SpatialActionHistoryPanel } from '../history/spatialActionHistory';
+import { SpatialAccountPanel } from '../account/spatialAccountPanel';
+import { SpatialProductivityPanel } from '../intelligence/spatialProductivityPanel';
 
 export interface SpatialAppControllerOptions {
   world: SpatialWorld;
@@ -47,15 +49,17 @@ export class SpatialAppController {
   readonly taskPanel: SpatialTaskPanel;
   readonly comparisonWorkspace: SpatialComparisonWorkspace;
 
-  // Left Wing (Disruption & Conflicts)
+  // Left Wing (Disruption, Conflicts & Productivity Intelligence)
   readonly disruptionPanel: SpatialDisruptionPanel;
   readonly conflictVisualizer: SpatialConflictVisualizer;
+  readonly productivityPanel: SpatialProductivityPanel;
 
   // Right Wing (AI Assistant, Validation, Approval, History)
   readonly assistantPanel: SpatialAssistantPanel;
   readonly validationExplorer: SpatialValidationExplorer;
   readonly approvalWorkflow: SpatialApprovalWorkflow;
   readonly actionHistoryPanel: SpatialActionHistoryPanel;
+  readonly accountPanel: SpatialAccountPanel;
   readonly recoveryManager: SpatialRecoveryManager;
 
   private unregisterUpdateLoop: (() => void) | null = null;
@@ -105,6 +109,11 @@ export class SpatialAppController {
     this.conflictVisualizer.setPosition(-1.15, 0.85, -1.0).setRotationY(35);
     this.world.scene.add(this.conflictVisualizer.group);
 
+    // Phase 11: Productivity & Health Intelligence Panel - lower left tier
+    this.productivityPanel = new SpatialProductivityPanel(0.7, 0.45);
+    this.productivityPanel.setPosition(-1.15, 0.35, -1.0).setRotationY(35);
+    this.world.scene.add(this.productivityPanel.group);
+
     // 4. Right Wing (Assistant, Validation, Approval, History) - angled at +35 deg
     this.assistantPanel = new SpatialAssistantPanel(0.7, 0.52);
     this.assistantPanel.setPosition(1.15, 1.35, -1.0).setRotationY(-35);
@@ -122,6 +131,11 @@ export class SpatialAppController {
     this.actionHistoryPanel = new SpatialActionHistoryPanel(0.7, 0.45);
     this.actionHistoryPanel.setPosition(1.15, 0.85, -1.0).setRotationY(-35);
     this.world.scene.add(this.actionHistoryPanel.group);
+
+    // Phase 9: Account & Preferences Panel - lower right tier
+    this.accountPanel = new SpatialAccountPanel(0.7, 0.45);
+    this.accountPanel.setPosition(1.15, 0.35, -1.0).setRotationY(-35);
+    this.world.scene.add(this.accountPanel.group);
 
     // 5. Connect Render Loop
     this.setupRenderLoop();
@@ -232,6 +246,35 @@ export class SpatialAppController {
       this.validationExplorer.displayValidation(candidate.validation);
       this.approvalWorkflow.loadPlanForReview(candidate);
     });
+
+      // E. Phase 9 & 10 Account & Calendar Panel callbacks
+      this.accountPanel.setCallbacks({
+        onStrategyChange: async (newStrategy) => {
+          try {
+            await this.api.updatePreferences({ preferredStrategy: newStrategy });
+            logger.info('SpatialAppController', `Updated user preferred strategy to ${newStrategy}`);
+          } catch (err) {
+            logger.error('SpatialAppController', `Failed to update preferred strategy: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        },
+        onSyncCalendar: async (provider) => {
+          try {
+            await this.api.syncCalendar(provider);
+            await this.loadInitialData();
+            logger.info('SpatialAppController', `Synced external calendar ${provider}`);
+          } catch (err) {
+            logger.error('SpatialAppController', `Failed to sync calendar: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        },
+        onSignOut: async () => {
+          try {
+            await this.api.logout();
+            await this.loadInitialData();
+          } catch (err) {
+            logger.error('SpatialAppController', `Failed to sign out: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        },
+      });
   }
 
   private clearScenarioResults(): void {
@@ -250,6 +293,16 @@ export class SpatialAppController {
   async loadInitialData(): Promise<void> {
     try {
       logger.info('SpatialAppController', 'Fetching schedule and tasks from backend API...');
+      const session = await this.api.getSession();
+      this.accountPanel.setAccount(session.user, session.preferences);
+
+      try {
+        const calData = await this.api.getCalendarProviders();
+        this.accountPanel.setCalendarProviders(calData.providers);
+      } catch {
+        // Fallback to local default if calendar providers route unavailable
+      }
+
       const dashboard = await this.api.getDashboard();
       this.currentDashboardData = dashboard;
 
@@ -258,6 +311,13 @@ export class SpatialAppController {
 
       const history = await this.api.getActionHistory();
       this.actionHistoryPanel.setHistoryEntries(history.entries);
+
+      try {
+        const insights = await this.api.getProductivityInsights();
+        this.productivityPanel.setInsights(insights);
+      } catch {
+        // Fallback gracefully if insights route unavailable
+      }
 
       logger.info('SpatialAppController', `Loaded ${dashboard.events.length} events, ${dashboard.tasks.length} tasks, and ${history.entries.length} history records`);
     } catch (err) {
@@ -282,6 +342,8 @@ export class SpatialAppController {
     this.validationExplorer.dispose();
     this.approvalWorkflow.dispose();
     this.actionHistoryPanel.dispose();
+    this.accountPanel.dispose();
+    this.productivityPanel.dispose();
 
     logger.info('SpatialAppController', 'All spatial modules disposed cleanly');
   }

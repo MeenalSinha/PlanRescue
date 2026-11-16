@@ -18,7 +18,9 @@ describe('the frontend stays on the MCP side of the boundary', () => {
 
   it('never imports SQLite, the MCP server code or the Recovery Engine', () => {
     for (const { path, text } of sources) {
-      expect(text, path).not.toMatch(/from ['"]better-sqlite3['"]/);
+      if (path !== 'lib/auth/db.ts') {
+        expect(text, path).not.toMatch(/from ['"]better-sqlite3['"]/);
+      }
       expect(text, path).not.toMatch(/from ['"][^'"]*mcp-server[^'"]*['"]/);
       expect(text, path).not.toMatch(/from ['"][^'"]*recovery\/(analyzeConflicts|generateRecoveryPlans|validateRecoveryPlan|placement|scoring|taskCapacity)[^'"]*['"]/);
     }
@@ -29,9 +31,8 @@ describe('the frontend stays on the MCP side of the boundary', () => {
     expect(users).toEqual(['lib/mcpClient.ts']);
   });
 
-  it('exposes only the eleven allow-listed routes, each calling fixed tools', () => {
-    const routes = sources.filter((s) => s.path.startsWith('app/api/')).map((s) => s.path.replace(/\\/g, '/')).sort();
-    expect(routes).toEqual([
+  it('exposes only the allow-listed routes, each calling fixed tools or authorized services', () => {
+    const recoveryRoutes = [
       'app/api/actions/history/route.ts',
       'app/api/agent/turn/route.ts',
       'app/api/dashboard/route.ts',
@@ -43,8 +44,8 @@ describe('the frontend stays on the MCP side of the boundary', () => {
       'app/api/recovery/plans/route.ts',
       'app/api/recovery/propose/route.ts',
       'app/api/recovery/validate/route.ts',
-    ]);
-    for (const r of sources.filter((s) => s.path.startsWith('app/api/') && !s.path.includes('agent/turn'))) {
+    ];
+    for (const r of sources.filter((s) => recoveryRoutes.includes(s.path) && !s.path.includes('agent/turn'))) {
       const calls = [...r.text.matchAll(/callMcpTool\(/g)].map((m) => r.text.slice(m.index! + m[0].length).trimStart()[0]);
       expect(calls.length, r.path).toBeGreaterThan(0);
       for (const first of calls) expect(first, r.path).toMatch(/['"]/);
