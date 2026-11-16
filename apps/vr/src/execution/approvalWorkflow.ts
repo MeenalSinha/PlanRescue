@@ -150,11 +150,13 @@ export class SpatialApprovalWorkflow extends SpatialPanel {
   /**
    * Step 1: Explicit Approval action.
    */
-  async executeApproval(actor = 'spatial_user'): Promise<ApproveRecoveryPlanOutput> {
+  async executeApproval(actor?: string): Promise<ApproveRecoveryPlanOutput> {
     if (!this.targetPlan) throw new Error('No plan loaded for approval');
+    if (!this.targetPlan.persistentId) {
+      throw new Error(`Cannot approve plan: plan candidate ${this.targetPlan.planId} is missing a persistentId. Ensure candidates are saved to SQLite before approval.`);
+    }
 
-    // Use persistentId if available, fallback to planId
-    const planIdToApprove = this.targetPlan.persistentId ?? this.targetPlan.planId;
+    const planIdToApprove = this.targetPlan.persistentId;
 
     try {
       logger.info(`Approving recovery plan ${planIdToApprove}`, 'ApprovalWorkflow');
@@ -177,15 +179,18 @@ export class SpatialApprovalWorkflow extends SpatialPanel {
   /**
    * Step 2: Separate Confirmation & Execution action.
    */
-  async executeApplication(actor = 'spatial_user'): Promise<ApplyApprovedPlanOutput> {
+  async executeApplication(actor?: string): Promise<ApplyApprovedPlanOutput> {
     if (!this.targetPlan) throw new Error('No plan loaded for application');
+    if (!this.targetPlan.persistentId) {
+      throw new Error(`Cannot execute plan: plan candidate ${this.targetPlan.planId} is missing a persistentId.`);
+    }
 
-    const planIdToApply = this.targetPlan.persistentId ?? this.targetPlan.planId;
+    const planIdToApply = this.targetPlan.persistentId;
     this.currentStep = 'executing';
 
     try {
       logger.info(`Executing approved plan ${planIdToApply}`, 'ApprovalWorkflow');
-      const result = await this.client.applyPlan(planIdToApply, { actor });
+      const result = await this.client.applyPlan(planIdToApply, actor ? { actor } : undefined);
       this.executionResult = result;
       this.currentStep = 'applied';
 

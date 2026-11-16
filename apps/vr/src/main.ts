@@ -87,6 +87,13 @@ async function init(): Promise<void> {
         }
       });
     }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => {
+        app.controller?.dispose();
+        app.world.dispose();
+      });
+    }
   } catch (error) {
     if (statusEl) {
       statusEl.textContent = 'STARTUP_ERROR';

@@ -181,8 +181,13 @@ export class SpatialEventBlock extends SpatialUIElement {
  */
 export class SpatialTimeline extends SpatialUIElement {
   private readonly trackWidth: number;
-  private readonly dayStartMinutes: number;
-  private readonly dayTotalMinutes: number;
+  private readonly defaultStartHour: number;
+  private readonly defaultEndHour: number;
+  private dayStartMinutes: number;
+  private dayTotalMinutes: number;
+  private currentStartHour: number;
+  private currentEndHour: number;
+  private readonly trackGroup: THREE.Group;
   private readonly eventBlocks = new Map<string, SpatialEventBlock>();
   private readonly interactionManager?: HandInteractionManager;
 
@@ -198,15 +203,21 @@ export class SpatialTimeline extends SpatialUIElement {
     this.interactionManager = interactionManager;
 
     this.trackWidth = options.trackWidth ?? 1.1;
-    const startHour = options.dayStartHour ?? 8;
-    const endHour = options.dayEndHour ?? 20;
-    this.dayStartMinutes = startHour * 60;
-    this.dayTotalMinutes = (endHour - startHour) * 60;
+    this.defaultStartHour = options.dayStartHour ?? 8;
+    this.defaultEndHour = options.dayEndHour ?? 20;
+    this.currentStartHour = this.defaultStartHour;
+    this.currentEndHour = this.defaultEndHour;
+    this.dayStartMinutes = this.currentStartHour * 60;
+    this.dayTotalMinutes = (this.currentEndHour - this.currentStartHour) * 60;
 
-    this.buildTimelineTrack(startHour, endHour);
+    this.trackGroup = new THREE.Group();
+    this.group.add(this.trackGroup);
+    this.buildTimelineTrack(this.currentStartHour, this.currentEndHour);
   }
 
   private buildTimelineTrack(startHour: number, endHour: number): void {
+    this.trackGroup.clear();
+
     // Background rail track
     const trackGeo = new THREE.BoxGeometry(
       this.trackWidth,
@@ -220,7 +231,7 @@ export class SpatialTimeline extends SpatialUIElement {
     });
     const trackMesh = new THREE.Mesh(trackGeo, trackMat);
     trackMesh.position.set(0, 0, 0);
-    this.group.add(trackMesh);
+    this.trackGroup.add(trackMesh);
 
     // Hour marker ticks & labels
     const totalHours = endHour - startHour;
@@ -232,7 +243,7 @@ export class SpatialTimeline extends SpatialUIElement {
       const tickGeo = new THREE.BoxGeometry(0.003, 0.035, 0.012);
       const tickMesh = new THREE.Mesh(tickGeo, new THREE.MeshBasicMaterial({ color: 0x475569 }));
       tickMesh.position.set(x, 0, 0.006);
-      this.group.add(tickMesh);
+      this.trackGroup.add(tickMesh);
 
       // Hour text label
       const hourStr = `${hour.toString().padStart(2, '0')}:00`;
@@ -249,12 +260,32 @@ export class SpatialTimeline extends SpatialUIElement {
         new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
       );
       lblMesh.position.set(x, -0.04, 0.01);
-      this.group.add(lblMesh);
+      this.trackGroup.add(lblMesh);
     }
   }
 
   setEvents(events: ScheduleEvent[]): void {
     this.clearEvents();
+
+    // Dynamically adjust timeline start and end if events fall outside default hours
+    let minH = this.defaultStartHour;
+    let maxH = this.defaultEndHour;
+    for (const evt of events) {
+      const startMin = this.parseMinutesFromISO(evt.startTime);
+      const endMin = startMin + evt.durationMinutes;
+      const sH = Math.floor(startMin / 60);
+      const eH = Math.ceil(endMin / 60);
+      if (sH < minH) minH = Math.max(0, sH);
+      if (eH > maxH) maxH = Math.min(24, eH);
+    }
+
+    if (minH !== this.currentStartHour || maxH !== this.currentEndHour) {
+      this.currentStartHour = minH;
+      this.currentEndHour = maxH;
+      this.dayStartMinutes = minH * 60;
+      this.dayTotalMinutes = (maxH - minH) * 60;
+      this.buildTimelineTrack(minH, maxH);
+    }
 
     for (const evt of events) {
       const startMin = this.parseMinutesFromISO(evt.startTime);
@@ -293,20 +324,19 @@ export class SpatialTimeline extends SpatialUIElement {
 
   private parseMinutesFromISO(iso: string): number {
     try {
+      // Prioritize explicit ISO wall-clock time (e.g. 2026-10-22T09:30:00+05:30 -> 09:30)
+      const match = iso.match(/T(\d{2}):(\d{2})/);
+      if (match && match[1] && match[2]) {
+        return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      }
       const d = new Date(iso);
       if (!isNaN(d.getTime())) {
-        return d.getHours() * 60 + d.getMinutes();
-      }
-      // Fallback parse 'T10:30'
-      const timePart = iso.split('T')[1];
-      if (timePart) {
-        const [h, m] = timePart.split(':');
-        return parseInt(h ?? '0', 10) * 60 + parseInt(m ?? '0', 10);
+        return d.getUTCHours() * 60 + d.getUTCMinutes();
       }
     } catch {
       // Fallback
     }
-    return 600; // default 10:00 AM
+    return this.dayStartMinutes;
   }
 
   private handleEventSelected(event: ScheduleEvent): void {

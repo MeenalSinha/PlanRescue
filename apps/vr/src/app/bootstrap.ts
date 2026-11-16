@@ -7,6 +7,7 @@ import { logger } from '../logging/logger';
 import { XrCapabilityDetector, type XrCapabilityReport } from '../platform/xrCapabilities';
 import { XrLifecycleManager } from '../platform/xrLifecycle';
 import { AppLifecycleManager, type AppState } from './lifecycle';
+import { SpatialAppController } from './spatialAppController';
 
 export interface BootstrapResult {
   config: VrConfig;
@@ -16,6 +17,7 @@ export interface BootstrapResult {
   api: PlanRescueApiClient;
   lifecycle: AppLifecycleManager;
   state: AppState;
+  controller?: SpatialAppController;
 }
 
 export interface BootstrapOptions {
@@ -90,6 +92,18 @@ export async function bootstrapApplication(options: BootstrapOptions = {}): Prom
     timeoutMs: config.requestTimeoutMs,
   });
 
+  // Initialize Spatial Application Controller (wires all Phase 2-8 spatial modules)
+  let controller: SpatialAppController | undefined;
+  if (!options.skipRenderer && capabilities.hasWebGL2) {
+    try {
+      controller = new SpatialAppController({ world, api, config });
+      // Non-blocking initial data loading (survives offline or slow backend gracefully)
+      void controller.loadInitialData();
+    } catch (controllerErr) {
+      logger.error('Bootstrap', `Failed to initialize spatial controller: ${controllerErr instanceof Error ? controllerErr.message : String(controllerErr)}`);
+    }
+  }
+
   // Final State determination
   const finalState: AppState = capabilities.canEnterImmersiveVr ? 'XR_AVAILABLE' : 'READY';
   lifecycle.transitionTo(finalState);
@@ -104,5 +118,6 @@ export async function bootstrapApplication(options: BootstrapOptions = {}): Prom
     api,
     lifecycle,
     state: finalState,
+    controller,
   };
 }

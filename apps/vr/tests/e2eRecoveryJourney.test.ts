@@ -40,15 +40,25 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
         startTime: '2026-10-22T09:00:00+05:30',
         endTime: '2026-10-22T09:30:00+05:30',
         durationMinutes: 30,
-        priority: 'high',
+        priority: 'medium',
         movable: true,
         category: 'meeting',
       },
       {
+        id: 'evt-focus',
+        title: 'Deep Work Focus Block',
+        startTime: '2026-10-22T09:30:00+05:30',
+        endTime: '2026-10-22T10:30:00+05:30',
+        durationMinutes: 60,
+        priority: 'medium',
+        movable: true,
+        category: 'focus',
+      },
+      {
         id: 'evt-architecture',
         title: 'Architecture Review',
-        startTime: '2026-10-22T10:00:00+05:30',
-        endTime: '2026-10-22T11:00:00+05:30',
+        startTime: '2026-10-22T11:00:00+05:30',
+        endTime: '2026-10-22T12:00:00+05:30',
         durationMinutes: 60,
         priority: 'critical',
         movable: false,
@@ -77,45 +87,45 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
     disruption: {
       type: 'event_overrun',
       eventId: 'evt-standup',
-      overrunMinutes: 45,
+      overrunMinutes: 30,
     },
-    eventsExamined: 2,
+    eventsExamined: 3,
     tasksExamined: 1,
     existingConflicts: [],
     newConflicts: [
       {
         issueId: 'conf-overlap-1',
         category: 'event_overlap',
-        severity: 'high',
-        affectedEventIds: ['evt-standup', 'evt-architecture'],
+        severity: 'medium',
+        affectedEventIds: ['evt-standup', 'evt-focus'],
         affectedTaskIds: [],
-        description: 'Team Standup overrun extends into Architecture Review',
+        description: 'Team Standup overrun extends into Deep Work Focus Block',
         interval: {
-          startTime: '2026-10-22T10:00:00+05:30',
-          endTime: '2026-10-22T10:15:00+05:30',
+          startTime: '2026-10-22T09:30:00+05:30',
+          endTime: '2026-10-22T10:00:00+05:30',
         },
         introducedByDisruption: true,
         resolvable: true,
-        suggestedNextStep: 'Shift Architecture Review or buffer downstream focus blocks',
+        suggestedNextStep: 'Shift Deep Work Focus Block downstream into open gap',
       },
     ],
     affectedEvents: [
       {
-        eventId: 'evt-architecture',
-        title: 'Architecture Review',
+        eventId: 'evt-focus',
+        title: 'Deep Work Focus Block',
         impact: 'direct_overlap',
-        canBeRescheduled: false,
-        reason: 'Protected critical event',
+        canBeRescheduled: true,
+        reason: 'Movable downstream event',
       },
     ],
     protectedConstraints: [
       {
         eventId: 'evt-architecture',
         title: 'Architecture Review',
-        startTime: '2026-10-22T10:00:00+05:30',
-        endTime: '2026-10-22T11:00:00+05:30',
+        startTime: '2026-10-22T11:00:00+05:30',
+        endTime: '2026-10-22T12:00:00+05:30',
         priority: 'critical',
-        reasons: ['critical_priority'],
+        reasons: ['immovable', 'critical_priority'],
       },
     ],
     taskAssessments: [],
@@ -131,32 +141,41 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
     persistentId: 'rec-persistent-e2e',
     savedStatus: 'proposed',
     strategy: 'minimal_disruption',
-    summary: 'Shift downstream focus block by 45 minutes',
+    summary: 'Shift Deep Work Focus Block downstream by 30 minutes',
     startTime: '2026-10-22T09:00:00+05:30',
     endTime: '2026-10-22T18:00:00+05:30',
     protectedEventIds: ['evt-architecture'],
     disruption: {
       type: 'event_overrun',
       eventId: 'evt-standup',
-      overrunMinutes: 45,
+      overrunMinutes: 30,
     },
     changes: [
       {
-        eventId: 'evt-architecture',
-        title: 'Architecture Review',
-        originalStartTime: '2026-10-22T10:00:00+05:30',
-        originalEndTime: '2026-10-22T11:00:00+05:30',
-        proposedStartTime: '2026-10-22T10:15:00+05:30',
-        proposedEndTime: '2026-10-22T11:15:00+05:30',
+        eventId: 'evt-focus',
+        title: 'Deep Work Focus Block',
+        originalStartTime: '2026-10-22T09:30:00+05:30',
+        originalEndTime: '2026-10-22T10:30:00+05:30',
+        proposedStartTime: '2026-10-22T10:00:00+05:30',
+        proposedEndTime: '2026-10-22T11:00:00+05:30',
         reason: 'Accommodate standup overrun',
       },
     ],
-    unchangedProtectedEvents: [],
+    unchangedProtectedEvents: [
+      {
+        eventId: 'evt-architecture',
+        title: 'Architecture Review',
+        startTime: '2026-10-22T11:00:00+05:30',
+        endTime: '2026-10-22T12:00:00+05:30',
+        priority: 'critical',
+        reasons: ['immovable', 'critical_priority'],
+      },
+    ],
     taskAssessments: [],
     explanation: {
-      changes: ['Architecture Review shifted by 15m'],
-      unchanged: [],
-      rationale: ['Minimal disruption'],
+      changes: ['Deep Work Focus Block shifted by 30m'],
+      unchanged: ['Architecture Review preserved at original time'],
+      rationale: ['Minimal disruption, all protected constraints preserved'],
       taskCapacity: ['Task capacity preserved'],
       limitations: [],
     },
@@ -177,7 +196,23 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
       isValid: true,
       checks: [
         {
-          name: 'No Overlaps',
+          name: 'immovable_events',
+          passed: true,
+          severity: 'hard',
+          eventId: null,
+          taskId: null,
+          message: 'Zero immovable events rescheduled',
+        },
+        {
+          name: 'critical_events',
+          passed: true,
+          severity: 'hard',
+          eventId: null,
+          taskId: null,
+          message: 'Zero critical events rescheduled',
+        },
+        {
+          name: 'no_overlaps',
           passed: true,
           severity: 'hard',
           eventId: null,
@@ -188,7 +223,7 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
       violations: [],
       warnings: [],
       taskAssessments: [],
-      summary: 'Validated',
+      summary: 'Validated - 0 hard violations',
     },
   };
 
@@ -232,12 +267,12 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
         changesCount: 1,
         changes: [
           {
-            eventId: 'evt-architecture',
-            title: 'Architecture Review',
-            previousStartTime: '2026-10-22T10:00:00+05:30',
-            previousEndTime: '2026-10-22T11:00:00+05:30',
-            newStartTime: '2026-10-22T10:15:00+05:30',
-            newEndTime: '2026-10-22T11:15:00+05:30',
+            eventId: 'evt-focus',
+            title: 'Deep Work Focus Block',
+            previousStartTime: '2026-10-22T09:30:00+05:30',
+            previousEndTime: '2026-10-22T10:30:00+05:30',
+            newStartTime: '2026-10-22T10:00:00+05:30',
+            newEndTime: '2026-10-22T11:00:00+05:30',
           },
         ],
         message: 'Plan executed into SQLite',
@@ -276,7 +311,7 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
 
     // 2. Load Calendar and Task data from Backend API
     const dashboardData = await mockClient.getDashboard('2026-10-22');
-    expect(dashboardData.events.length).toBe(2);
+    expect(dashboardData.events.length).toBe(3);
 
     // 3. Render Spatial Timeline and Task Panel
     const timeline = new SpatialTimeline(interactionManager);
@@ -301,7 +336,7 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
       disruption: {
         type: 'event_overrun',
         eventId: standupEvent.id,
-        overrunMinutes: 45,
+        overrunMinutes: 30,
       },
     });
     expect(conflictAnalysis.newConflicts.length).toBe(1);
@@ -318,7 +353,7 @@ describe('PlanRescue Spatial - Full End-to-End Recovery Journey (Milestones 1-16
       disruption: {
         type: 'event_overrun',
         eventId: standupEvent.id,
-        overrunMinutes: 45,
+        overrunMinutes: 30,
       },
     });
     expect(planSet.candidates.length).toBe(1);

@@ -15,7 +15,7 @@ export class SpatialWorld {
   private resizeObserver: ResizeObserver | null = null;
   private resizeListener: (() => void) | null = null;
   private isDisposed = false;
-  private animationCallbacks: Array<(delta: number, time: number) => void> = [];
+  private animationCallbacks: Array<(delta: number, time: number, frame?: XRFrame) => void> = [];
   private lastTime = 0;
 
   constructor() {
@@ -142,7 +142,7 @@ export class SpatialWorld {
   private startRenderLoop(): void {
     if (!this.renderer) return;
 
-    this.renderer.setAnimationLoop((time, _frame) => {
+    this.renderer.setAnimationLoop((time, frame) => {
       if (this.isDisposed || !this.renderer) return;
 
       const delta = this.lastTime > 0 ? (time - this.lastTime) / 1000 : 0.016;
@@ -151,7 +151,7 @@ export class SpatialWorld {
       // Execute custom update callbacks
       for (const callback of this.animationCallbacks) {
         try {
-          callback(delta, time);
+          callback(delta, time, frame as XRFrame | undefined);
         } catch (err) {
           logger.error('SpatialWorld', `Animation loop callback error: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -161,11 +161,19 @@ export class SpatialWorld {
     });
   }
 
-  onUpdate(callback: (delta: number, time: number) => void): () => void {
+  onUpdate(callback: (delta: number, time: number, frame?: XRFrame) => void): () => void {
     this.animationCallbacks.push(callback);
     return () => {
       this.animationCallbacks = this.animationCallbacks.filter((cb) => cb !== callback);
     };
+  }
+
+  getReferenceSpace(): XRReferenceSpace | null {
+    return this.renderer?.xr.getReferenceSpace() ?? null;
+  }
+
+  getXRSession(): XRSession | null {
+    return this.renderer?.xr.getSession() ?? null;
   }
 
   dispose(): void {

@@ -44,7 +44,13 @@ export class HandInteractionManager {
   private activeHandedness: XRHandedness = 'none';
   private leftHandActive = false;
   private rightHandActive = false;
-  private pinchThresholdMeters = 0.035; // 3.5 cm between thumb and index
+  private pinchThresholdMeters = 0.035;       // 3.5 cm to start pinch
+  private pinchReleaseThresholdMeters = 0.050; // 5.0 cm hysteresis to release pinch
+
+  private readonly handPinchStates = new Map<XRHandedness, boolean>();
+  private readonly lastPinchDistances = new Map<XRHandedness, number>();
+  private readonly controllerTriggerStates = new Map<XRHandedness, boolean>();
+  private readonly controllerGripStates = new Map<XRHandedness, boolean>();
 
   // Drag plane for stable seated manipulation
   private readonly dragPlane = new THREE.Plane();
@@ -118,6 +124,194 @@ export class HandInteractionManager {
       leftHand: this.leftHandActive,
       rightHand: this.rightHandActive,
     };
+  }
+
+  getPinchState(handedness: XRHandedness): HandPinchState {
+    return {
+      handedness,
+      isPinching: this.handPinchStates.get(handedness) ?? false,
+      pinchDistance: this.lastPinchDistances.get(handedness) ?? 1.0,
+    };
+  }
+
+  /**
+   * Reads real optical hand joints and/or controller target rays from the active XRFrame.
+   */
+  updateFromXRFrame(frame: XRFrame, referenceSpace: XRReferenceSpace, session: XRSession): void {
+    let leftPresent = false;
+    let rightPresent = false;
+
+    for (const source of session.inputSources) {
+      const handedness = source.handedness;
+      if (handedness === 'left') leftPresent = true;
+      if (handedness === 'right') rightPresent = true;
+
+      // 1. Process Optical Hand Tracking (XRHand)
+      if (source.hand) {
+        this.processOpticalHand(source, frame, referenceSpace);
+      } else if (source.targetRaySpace) {
+        // 2. Fallback to 6DoF Controller target ray and buttons
+        this.processControllerInput(source, frame, referenceSpace);
+      }
+    }
+
+    // Handle tracking loss
+    if (!leftPresent && this.leftHandActive) {
+      this.handleHandTrackingLoss('left');
+    }
+    if (!rightPresent && this.rightHandActive) {
+      this.handleHandTrackingLoss('right');
+    }
+
+    this.leftHandActive = leftPresent;
+    this.rightHandActive = rightPresent;
+  }
+
+  private processOpticalHand(source: XRInputSource, frame: XRFrame, referenceSpace: XRReferenceSpace): void {
+    const hand = source.hand;
+    if (!hand) return;
+    const handedness = source.handedness;
+
+    // Get joint spaces (supporting both .get() Map-like and indexed property access)
+    const getJoint = (name: string): XRJointSpace | null => {
+      if (typeof (hand as unknown as { get: (k: string) => XRJointSpace }).get === 'function') {
+        return (hand as unknown as { get: (k: string) => XRJointSpace }).get(name) ?? null;
+      }
+      return (hand as unknown as Record<string, XRJointSpace>)[name] ?? null;
+    };
+
+    const thumbTipJoint = getJoint('thumb-tip');
+    const indexTipJoint = getJoint('index-finger-tip');
+
+    if (!thumbTipJoint || !indexTipJoint) return;
+    if (typeof frame.getJointPose !== 'function') return;
+
+    const thumbPose = frame.getJointPose(thumbTipJoint, referenceSpace);
+    const indexPose = frame.getJointPose(indexTipJoint, referenceSpace);
+
+    if (!thumbPose || !indexPose) {
+      // Joint tracking lost on this hand
+      return;
+    }
+
+    const thumbPos = new THREE.Vector3(
+      thumbPose.transform.position.x,
+      thumbPose.transform.position.y,
+      thumbPose.transform.position.z,
+    );
+    const indexPos = new THREE.Vector3(
+      indexPose.transform.position.x,
+      indexPose.transform.position.y,
+      indexPose.transform.position.z,
+    );
+
+    const pinchDistance = thumbPos.distanceTo(indexPos);
+    this.lastPinchDistances.set(handedness, pinchDistance);
+    const pinchPoint = thumbPos.clone().lerp(indexPos, 0.5);
+
+    // Optical Hand pointer ray
+    if (source.targetRaySpace) {
+      const rayPose = frame.getPose(source.targetRaySpace, referenceSpace);
+      if (rayPose) {
+        const origin = new THREE.Vector3(
+          rayPose.transform.position.x,
+          rayPose.transform.position.y,
+          rayPose.transform.position.z,
+        );
+        const orientation = new THREE.Quaternion(
+          rayPose.transform.orientation.x,
+          rayPose.transform.orientation.y,
+          rayPose.transform.orientation.z,
+          rayPose.transform.orientation.w,
+        );
+        const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(orientation);
+        this.processPointerRay(origin, direction);
+      }
+    }
+
+    // Evaluate pinch gesture with hysteresis
+    const wasPinching = this.handPinchStates.get(handedness) ?? false;
+    const isPinching = wasPinching
+      ? pinchDistance < this.pinchReleaseThresholdMeters
+      : pinchDistance < this.pinchThresholdMeters;
+
+    if (isPinching !== wasPinching) {
+      this.handPinchStates.set(handedness, isPinching);
+      this.activeHandedness = handedness;
+
+      if (isPinching) {
+        // Pinch gesture started
+        if (this.hoveredObject?.isGrabbable) {
+          this.startGrab(pinchPoint);
+        } else {
+          this.triggerSelect();
+        }
+      } else {
+        // Pinch gesture released
+        if (this.isCurrentlyGrabbing()) {
+          this.releaseGrab();
+        }
+      }
+    }
+  }
+
+  private processControllerInput(source: XRInputSource, frame: XRFrame, referenceSpace: XRReferenceSpace): void {
+    if (!source.targetRaySpace) return;
+    const rayPose = frame.getPose(source.targetRaySpace, referenceSpace);
+    if (!rayPose) return;
+
+    const origin = new THREE.Vector3(
+      rayPose.transform.position.x,
+      rayPose.transform.position.y,
+      rayPose.transform.position.z,
+    );
+    const orientation = new THREE.Quaternion(
+      rayPose.transform.orientation.x,
+      rayPose.transform.orientation.y,
+      rayPose.transform.orientation.z,
+      rayPose.transform.orientation.w,
+    );
+    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(orientation);
+    this.processPointerRay(origin, direction);
+
+    // Controller trigger & grip button interaction
+    const triggerPressed = source.gamepad?.buttons[0]?.pressed ?? false;
+    const gripPressed = source.gamepad?.buttons[1]?.pressed ?? false;
+
+    const wasTrigger = this.controllerTriggerStates.get(source.handedness) ?? false;
+    if (triggerPressed !== wasTrigger) {
+      this.controllerTriggerStates.set(source.handedness, triggerPressed);
+      if (triggerPressed) {
+        this.triggerSelect();
+      }
+    }
+
+    const wasGrip = this.controllerGripStates.get(source.handedness) ?? false;
+    if (gripPressed !== wasGrip) {
+      this.controllerGripStates.set(source.handedness, gripPressed);
+      if (gripPressed) {
+        this.startGrab();
+      } else {
+        this.releaseGrab();
+      }
+    }
+  }
+
+  private handleHandTrackingLoss(handedness: XRHandedness): void {
+    if (this.activeHandedness === handedness && this.isCurrentlyGrabbing()) {
+      this.releaseGrab();
+    }
+    this.handPinchStates.delete(handedness);
+    this.lastPinchDistances.delete(handedness);
+    if (this.activeHandedness === handedness) {
+      this.activeHandedness = 'none';
+      if (this.hoveredObject) {
+        this.hoveredObject.onHover?.(false);
+        this.hoveredObject = null;
+      }
+      this.rayLine.visible = false;
+    }
+    logger.warn('HandInteraction', `Tracking lost on ${handedness} hand`);
   }
 
   /**

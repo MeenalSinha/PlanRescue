@@ -24,10 +24,17 @@ export class SpatialValidationExplorer extends SpatialPanel {
     this.clearChecks();
 
     const startY = 0;
-    const gap = 0.085;
+    const gap = 0.065;
 
-    // Display checks (e.g. No Overlaps, Duration Preserved, Protected Constraints, Deadline Feasibility)
-    const checksToDisplay = result.checks.slice(0, 5);
+    // Prioritize failed checks (violations/warnings) first so critical issues are never hidden
+    const sortedChecks = [...result.checks].sort((a, b) => {
+      if (a.passed === b.passed) return 0;
+      return a.passed ? 1 : -1;
+    });
+
+    const maxItems = 6;
+    const checksToDisplay = sortedChecks.slice(0, maxItems);
+    const remainingPassed = sortedChecks.slice(maxItems).filter((c) => c.passed).length;
 
     checksToDisplay.forEach((chk, i) => {
       const isPassed = chk.passed;
@@ -40,40 +47,61 @@ export class SpatialValidationExplorer extends SpatialPanel {
 
       const lineText = `${statusIcon} ${chk.name}: ${chk.message}`;
       const { texture, aspect } = createTextTexture(lineText, {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: isPassed ? '500' : '700',
         color: statusColor,
         width: 512,
-        height: 40,
+        height: 36,
         textAlign: 'left',
-        padding: 6,
+        padding: 4,
       });
 
       const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.56, 0.56 / aspect),
+        new THREE.PlaneGeometry(0.58, 0.58 / aspect),
         new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
       );
       mesh.position.set(0, startY - i * gap, 0);
       this.checksGroup.add(mesh);
     });
 
+    let currentY = startY - checksToDisplay.length * gap;
+
+    if (remainingPassed > 0) {
+      const moreText = `+ ${remainingPassed} additional verification check(s) passed`;
+      const { texture: mTex, aspect: mAspect } = createTextTexture(moreText, {
+        fontSize: 12,
+        fontWeight: '400',
+        color: SPATIAL_PALETTE.textMuted,
+        width: 512,
+        height: 28,
+        textAlign: 'center',
+      });
+      const mMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.56, 0.56 / mAspect),
+        new THREE.MeshBasicMaterial({ map: mTex, transparent: true }),
+      );
+      mMesh.position.set(0, currentY, 0);
+      this.checksGroup.add(mMesh);
+      currentY -= 0.04;
+    }
+
     // Summary banner at bottom
     const summaryText = result.isValid
       ? '✓ All hard constraints satisfied. Proposal is safe to execute.'
       : '✗ Plan contains constraint violations and cannot be executed.';
     const { texture: sTex, aspect: sAspect } = createTextTexture(summaryText, {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '600',
       color: result.isValid ? SPATIAL_PALETTE.statusFeasible : SPATIAL_PALETTE.statusInfeasible,
       width: 512,
-      height: 48,
+      height: 44,
       textAlign: 'center',
     });
     const sMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.56, 0.56 / sAspect),
+      new THREE.PlaneGeometry(0.58, 0.58 / sAspect),
       new THREE.MeshBasicMaterial({ map: sTex, transparent: true }),
     );
-    sMesh.position.set(0, startY - checksToDisplay.length * gap - 0.03, 0);
+    sMesh.position.set(0, currentY - 0.03, 0);
     this.checksGroup.add(sMesh);
   }
 

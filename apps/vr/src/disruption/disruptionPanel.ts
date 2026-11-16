@@ -167,10 +167,12 @@ export class SpatialDisruptionPanel extends SpatialPanel {
 
   private computeProjectedEndTime(originalEndIso: string, overrunMins: number): string {
     try {
-      const d = new Date(originalEndIso);
-      if (!isNaN(d.getTime())) {
-        const projected = new Date(d.getTime() + overrunMins * 60000);
-        return `${projected.getHours().toString().padStart(2, '0')}:${projected.getMinutes().toString().padStart(2, '0')}`;
+      const match = originalEndIso.match(/T(\d{2}):(\d{2})/);
+      if (match && match[1] && match[2]) {
+        const totalMins = parseInt(match[1], 10) * 60 + parseInt(match[2], 10) + overrunMins;
+        const projectedHours = Math.floor(totalMins / 60) % 24;
+        const projectedMins = totalMins % 60;
+        return `${projectedHours.toString().padStart(2, '0')}:${projectedMins.toString().padStart(2, '0')}`;
       }
     } catch {
       // Fallback

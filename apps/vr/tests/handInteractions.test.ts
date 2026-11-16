@@ -161,4 +161,101 @@ describe('Hand Interaction System (Phase 3)', () => {
     tutorial.resetTutorial();
     expect(tutorial.getState().currentStep).toBe('welcome');
   });
+
+  it('processes optical hand joints from XRFrame to detect pinch distance and triggers pinch selection', () => {
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    const manager = new HandInteractionManager(scene, camera);
+
+    const onSelect = vi.fn();
+    const testMesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshBasicMaterial());
+    testMesh.position.set(0, 0, -1);
+    scene.add(testMesh);
+
+    manager.registerInteractable({
+      id: 'target-hand',
+      mesh: testMesh,
+      isSelectable: true,
+      onSelect,
+    });
+
+    // Mock Joint spaces
+    const thumbJointSpace = {} as XRJointSpace;
+    const indexJointSpace = {} as XRJointSpace;
+    const targetRaySpace = {} as XRSpace;
+
+    const mockHand = new Map<string, XRJointSpace>([
+      ['thumb-tip', thumbJointSpace],
+      ['index-finger-tip', indexJointSpace],
+    ]);
+
+    const mockInputSource = {
+      handedness: 'right' as XRHandedness,
+      hand: mockHand as unknown as XRHand,
+      targetRaySpace,
+    } as XRInputSource;
+
+    const mockSession = {
+      inputSources: [mockInputSource],
+    } as unknown as XRSession;
+
+    const mockRefSpace = {} as XRReferenceSpace;
+
+    // 1. Frame with open hand (distance = 10cm, no pinch)
+    const mockFrameOpen = {
+      getJointPose: (joint: XRJointSpace) => {
+        if (joint === thumbJointSpace) {
+          return { transform: { position: { x: 0, y: 0, z: -0.5 } } };
+        }
+        if (joint === indexJointSpace) {
+          return { transform: { position: { x: 0.1, y: 0, z: -0.5 } } }; // 10 cm apart
+        }
+        return null;
+      },
+      getPose: () => ({
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          orientation: { x: 0, y: 0, z: 0, w: 1 }, // points at (0, 0, -1)
+        },
+      }),
+    } as unknown as XRFrame;
+
+    manager.updateFromXRFrame(mockFrameOpen, mockRefSpace, mockSession);
+    const pinchStateOpen = manager.getPinchState('right');
+    expect(pinchStateOpen.isPinching).toBe(false);
+    expect(pinchStateOpen.pinchDistance).toBeCloseTo(0.1, 2);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // 2. Frame with closed pinch (distance = 2cm < 3.5cm threshold)
+    const mockFramePinch = {
+      getJointPose: (joint: XRJointSpace) => {
+        if (joint === thumbJointSpace) {
+          return { transform: { position: { x: 0, y: 0, z: -0.5 } } };
+        }
+        if (joint === indexJointSpace) {
+          return { transform: { position: { x: 0.02, y: 0, z: -0.5 } } }; // 2 cm apart
+        }
+        return null;
+      },
+      getPose: () => ({
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          orientation: { x: 0, y: 0, z: 0, w: 1 },
+        },
+      }),
+    } as unknown as XRFrame;
+
+    manager.updateFromXRFrame(mockFramePinch, mockRefSpace, mockSession);
+    const pinchStateClosed = manager.getPinchState('right');
+    expect(pinchStateClosed.isPinching).toBe(true);
+    expect(pinchStateClosed.pinchDistance).toBeCloseTo(0.02, 2);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+
+    // 3. Loss of tracking handles gracefully
+    const mockSessionEmpty = { inputSources: [] } as unknown as XRSession;
+    manager.updateFromXRFrame(mockFramePinch, mockRefSpace, mockSessionEmpty);
+    expect(manager.getHandTrackingStatus().rightHand).toBe(false);
+
+    manager.dispose();
+  });
 });

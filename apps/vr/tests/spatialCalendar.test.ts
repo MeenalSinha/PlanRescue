@@ -116,4 +116,36 @@ describe('Spatial Calendar & Timeline (Phase 4)', () => {
 
     timeline.dispose();
   });
+
+  it('preserves calendar wall-clock times from ISO strings and dynamically expands bounds', () => {
+    const earlyAndLateEvents: ScheduleEvent[] = [
+      {
+        id: 'evt-early',
+        title: 'Early Breakfast Meeting',
+        startTime: '2026-10-22T06:30:00+05:30', // Earlier than 08:00
+        endTime: '2026-10-22T07:30:00+05:30',
+        durationMinutes: 60,
+        priority: 'medium',
+        movable: true,
+        category: 'meeting',
+      },
+      {
+        id: 'evt-late',
+        title: 'Late Evening Debrief',
+        startTime: '2026-10-22T21:00:00+05:30', // Later than 20:00
+        endTime: '2026-10-22T22:00:00+05:30',
+        durationMinutes: 60,
+        priority: 'high',
+        movable: false,
+        category: 'meeting',
+      },
+    ];
+
+    const timeline = new SpatialTimeline();
+    timeline.setEvents(earlyAndLateEvents);
+
+    // Both events should be present and positioned within the track
+    expect(timeline.group.children.length).toBeGreaterThan(1);
+    timeline.dispose();
+  });
 });

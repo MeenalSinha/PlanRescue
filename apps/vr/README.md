@@ -32,6 +32,7 @@ Users can:
              [apps/vr Spatial Studio Application]
              ├── src/main.ts (DOM & Canvas Mounting)
              ├── src/app/bootstrap.ts (Validated Coordinated Startup)
+             ├── src/app/spatialAppController.ts (Runtime Orchestration & 3-Zone Layout)
              ├── src/app/lifecycle.ts (State Machine & Transitions)
              ├── src/core/world.ts (Three.js WebGL2 Rendering & Lighting)
              ├── src/ui/
