@@ -1,0 +1,90 @@
+{
+  "version": "iwsdk.scene.v1",
+  "name": "PlanRescueSpatialStudio",
+  "metadata": {
+    "title": "PlanRescue Spatial Studio",
+    "description": "Minimal functional starter environment for schedule recovery foundation"
+  },
+  "env": {
+    "background": {
+      "color": "#0d1117"
+    },
+    "lighting": "studio",
+    "fog": {
+      "color": "#0d1117",
+      "near": 5.0,
+      "far": 30.0
+    }
+  },
+  "resources": [],
+  "root": {
+    "entities": [
+      {
+        "id": "ambient-light",
+        "name": "Ambient Light",
+        "transform": {
+          "position": [0, 2.5, 0],
+          "rotationDeg": [0, 0, 0],
+          "scale": 1.0
+        },
+        "components": {
+          "Light": {
+            "type": "ambient",
+            "color": "#ffffff",
+            "intensity": 0.6
+          }
+        }
+      },
+      {
+        "id": "key-light",
+        "name": "Key Directional Light",
+        "transform": {
+          "position": [2, 4, 3],
+          "rotationDeg": [-45, 30, 0],
+          "scale": 1.0
+        },
+        "components": {
+          "Light": {
+            "type": "directional",
+            "color": "#e0e7ff",
+            "intensity": 0.9,
+            "castShadow": true
+          }
+        }
+      },
+      {
+        "id": "studio-floor-grid",
+        "name": "Studio Reference Grid",
+        "transform": {
+          "position": [0, 0, 0],
+          "rotationDeg": [0, 0, 0],
+          "scale": 1.0
+        },
+        "components": {
+          "GridReference": {
+            "size": 10,
+            "divisions": 20,
+            "primaryColor": "#3b82f6",
+            "secondaryColor": "#1e293b"
+          }
+        }
+      },
+      {
+        "id": "schedule-anchor-podium",
+        "name": "Schedule Anchor Podium",
+        "transform": {
+          "position": [0, 0.75, -1.2],
+          "rotationDeg": [0, 0, 0],
+          "scale": 1.0
+        },
+        "components": {
+          "SpatialAnchor": {
+            "label": "Schedule Recovery Horizon",
+            "interactable": true
+          },
+          "RayInteractable": {}
+        }
+      }
+    ]
+  }
+}

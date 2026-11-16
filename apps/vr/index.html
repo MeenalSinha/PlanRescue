@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlanRescue Spatial</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background-color: #090d16;
+        color: #f1f5f9;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        overflow: hidden;
+        width: 100vw;
+        height: 100vh;
+      }
+      #scene-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+      }
+      #hud-overlay {
+        position: absolute;
+        top: 24px;
+        left: 24px;
+        z-index: 10;
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        border-radius: 12px;
+        padding: 20px 24px;
+        max-width: 420px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      }
+      h1 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: #60a5fa;
+        margin-bottom: 4px;
+      }
+      .tagline {
+        font-size: 0.875rem;
+        color: #94a3b8;
+        margin-bottom: 16px;
+      }
+      .status-pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
+      .status-ready {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .status-xr-available {
+        background: rgba(59, 130, 246, 0.2);
+        color: #93c5fd;
+        border: 1px solid rgba(59, 130, 246, 0.4);
+      }
+      .status-error {
+        background: rgba(239, 68, 68, 0.2);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+      }
+      .capabilities-list {
+        font-size: 0.8125rem;
+        color: #cbd5e1;
+        margin-bottom: 16px;
+        line-height: 1.6;
+      }
+      .cap-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+      .cap-val {
+        font-weight: 600;
+      }
+      .btn-vr {
+        display: block;
+        width: 100%;
+        padding: 12px 18px;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #ffffff;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.2s ease;
+      }
+      .btn-vr:hover:not(:disabled) {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        box-shadow: 0 0 16px rgba(59, 130, 246, 0.5);
+      }
+      .btn-vr:disabled {
+        background: #334155;
+        color: #64748b;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <div id="hud-overlay">
+      <h1>PlanRescue Spatial</h1>
+      <p class="tagline">Your Day Changed. Reshape It With Your Hands.</p>
+      <div id="app-status" class="status-pill status-ready">INITIALIZING</div>
+      <div class="capabilities-list" id="capabilities-view">
+        <div class="cap-item"><span>WebXR Immersive VR:</span><span class="cap-val" id="cap-xr">Detecting...</span></div>
+        <div class="cap-item"><span>Hand Tracking:</span><span class="cap-val" id="cap-hand">Configured</span></div>
+        <div class="cap-item"><span>Rendering:</span><span class="cap-val" id="cap-webgl">WebGL2</span></div>
+      </div>
+      <button id="btn-enter-vr" class="btn-vr" disabled>Enter VR</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

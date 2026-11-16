@@ -45,6 +45,21 @@ Implemented and verified:
   - Bounded intent extraction: Bedrock foundation models interpret natural-language requests into structured, Zod-validated `ExtractedIntent` contracts without autonomous write privileges.
   - Preserves deterministic Recovery Engine, independent constraint validation, and explicit user approval guards.
   - 502 tests across 33 test suites passing 100% (363 backend tests in 19 files + 139 web tests in 14 files). Comprehensive documentation in `docs/aws-bedrock-integration.md` and `docs/aws-builder-submission.md`.
+- **PlanRescue Spatial (VR Application — Meta VR Start Developer Competition 2026)**:
+  - **Tagline**: *Your Day Changed. Reshape It With Your Hands.*
+  - **Phase 0 (Audit & Foundation)**: Complete repository inspection, baseline verification matrix across Phases 0–9, identification of sandbox network isolation factors, and definition of the typed HTTPS API integration boundary.
+  - **Phase 1 (VR Application Foundation & Architecture)**: Independent Meta Immersive Web SDK (IWSDK) application under `apps/vr/`.
+    - Three.js WebGL2 spatial rendering foundation with lighting, reference ground grid, and Schedule Anchor Podium.
+    - Manifest-first project configuration via `iwsdk.config.json` and `public/scenes/main.iwsdk.scene.json`.
+    - Runtime capability detection module distinguishing configured, browser-supported, device-available, and emulated input sources.
+    - Centralized application lifecycle state machine (`INITIALIZING`, `READY`, `XR_AVAILABLE`, `XR_SESSION_ACTIVE`, `XR_SESSION_ENDED`, `ERROR`).
+    - Robust XRSession management supporting clean entry, pause/resume, and clean exit.
+    - Centralized, validated Zod configuration system with multi-tier runtime priority (`window` injection > `/config.json` > `import.meta.env`) with zero hardcoded application data.
+    - Reusable typed API client (`PlanRescueApiClient`) connecting to server-side Next.js route handlers with timeouts, abort signals, and safe retry controls.
+    - Structured logging with automatic sensitive data redaction (`token`, `password`, `secret`, `bearer`, etc.).
+    - Independent package isolation (`apps/vr/package.json`) and isolated TypeScript configuration (`apps/vr/tsconfig.json`).
+    - Dedicated automated test suite in `apps/vr/tests/` (26 tests passing 100%).
+    - Convenient root workspace scripts: `npm run vr:dev`, `npm run vr:typecheck`, `npm run vr:test`, `npm run vr:build`, `npm run vr:preview`.
 
 ### Known Limitations
 * **Single-User Local Prototype**: The application is designed for local developer evaluation; actor classification is tracked as `local-user` rather than an enterprise multi-tenant IAM system.

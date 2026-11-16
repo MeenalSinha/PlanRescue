@@ -1,0 +1,35 @@
+{
+  "$schema": "https://developers.meta.com/iwsdk/schemas/iwsdk-project.v1.schema.json",
+  "version": "iwsdk.project.v1",
+  "name": "planrescue-spatial",
+  "title": "PlanRescue Spatial",
+  "description": "Your Day Changed. Reshape It With Your Hands. Immersive AI Schedule Recovery for Meta Quest.",
+  "scene": "./public/scenes/main.iwsdk.scene.json",
+  "world": {
+    "xr": {
+      "mode": "vr",
+      "features": {
+        "handTracking": {
+          "required": true
+        },
+        "gazeTracking": false,
+        "planeDetection": false,
+        "meshDetection": false
+      }
+    },
+    "features": {
+      "grabbing": true,
+      "locomotion": false,
+      "physics": false,
+      "fieldOfViewMask": true
+    }
+  },
+  "emulator": {
+    "device": "metaQuest3",
+    "environment": "studio",
+    "activation": "localhost"
+  },
+  "input": {
+    "canvasPointerEvents": true
+  }
+}

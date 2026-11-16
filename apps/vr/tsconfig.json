@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2023"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [
+      "@types/webxr",
+      "vite/client"
+    ],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

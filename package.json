@@ -35,7 +35,17 @@
     "typecheck:web": "npm run typecheck --prefix apps/web",
     "test:web": "npm run build && npm run build:web && npm test --prefix apps/web",
     "test:web:unit": "npm run test:unit --prefix apps/web",
-    "test:e2e": "npm run build && npm run build:web && npm run test:e2e --prefix apps/web"
+    "test:e2e": "npm run build && npm run build:web && npm run test:e2e --prefix apps/web",
+    "dev:vr": "npm run dev --prefix apps/vr",
+    "build:vr": "npm run build --prefix apps/vr",
+    "preview:vr": "npm run preview --prefix apps/vr",
+    "typecheck:vr": "npm run typecheck --prefix apps/vr",
+    "test:vr": "npm test --prefix apps/vr",
+    "vr:dev": "npm run dev --prefix apps/vr",
+    "vr:build": "npm run build --prefix apps/vr",
+    "vr:preview": "npm run preview --prefix apps/vr",
+    "vr:typecheck": "npm run typecheck --prefix apps/vr",
+    "vr:test": "npm test --prefix apps/vr"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

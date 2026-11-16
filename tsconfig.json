@@ -29,6 +29,7 @@
   ],
   "exclude": [
     "apps/web",
+    "apps/vr",
     "node_modules",
     "dist"
   ]
