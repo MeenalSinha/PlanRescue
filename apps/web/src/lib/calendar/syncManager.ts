@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Db } from '../auth/db';
 import { getAuthDatabase } from '../auth/db';
+import { decryptData, encryptData } from '../security/crypto';
 import type {
   CalendarProvider,
   CalendarProviderType,
@@ -34,6 +35,16 @@ export class CalendarSyncManager {
     }
   }
 
+  private decryptAccessToken(storedToken?: string): string {
+    if (!storedToken) return 'dummy-token';
+    try {
+      return decryptData(storedToken);
+    } catch {
+      // In case of unencrypted test tokens or legacy tokens
+      return storedToken;
+    }
+  }
+
   connectAccount(
     userId: string,
     provider: CalendarProviderType,
@@ -43,6 +54,10 @@ export class CalendarSyncManager {
   ): ExternalCalendarAccount {
     const id = `cal_acc_${randomUUID()}`;
     const now = new Date().toISOString();
+
+    // Encrypt sensitive access and refresh tokens at rest with AES-256-GCM
+    const encryptedAccessToken = accessToken ? encryptData(accessToken) : null;
+    const encryptedRefreshToken = refreshToken ? encryptData(refreshToken) : null;
 
     this.db
       .prepare(`
@@ -56,7 +71,7 @@ export class CalendarSyncManager {
           sync_status = 'connected',
           updated_at = excluded.updated_at
       `)
-      .run(id, userId, provider, accountEmail.toLowerCase(), accessToken, refreshToken, now, now, now);
+      .run(id, userId, provider, accountEmail.toLowerCase(), encryptedAccessToken, encryptedRefreshToken, now, now, now);
 
     return this.getAccount(userId, provider, accountEmail)!;
   }
@@ -127,8 +142,9 @@ export class CalendarSyncManager {
       .prepare('SELECT access_token, sync_cursor FROM external_calendar_accounts WHERE id = ?')
       .get(account.id) as any;
 
-    const provider = this.getProvider(providerType, row.access_token || 'dummy-token');
-    const { events, nextSyncToken } = await provider.fetchEvents(timeMin, timeMax, row.sync_cursor);
+    const accessToken = this.decryptAccessToken(row?.access_token);
+    const provider = this.getProvider(providerType, accessToken);
+    const { events, nextSyncToken } = await provider.fetchEvents(timeMin, timeMax, row?.sync_cursor);
 
     const now = new Date().toISOString();
     let imported = 0;
@@ -242,7 +258,8 @@ export class CalendarSyncManager {
     }
 
     const row = this.db.prepare('SELECT access_token FROM external_calendar_accounts WHERE id = ?').get(account.id) as any;
-    const provider = this.getProvider(providerType, row.access_token || 'dummy-token');
+    const accessToken = this.decryptAccessToken(row?.access_token);
+    const provider = this.getProvider(providerType, accessToken);
 
     let succeeded = 0;
     let failed = 0;

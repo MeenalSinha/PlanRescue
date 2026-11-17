@@ -8,7 +8,7 @@ const config: NextConfig = {
   poweredByHeader: false,
   // The MCP client is a Node-only package used from route handlers; keep it out of the bundle.
   serverExternalPackages: ['@modelcontextprotocol/client'],
-  // Defence in depth for the browser: no framing, no sniffing, no referrer leakage.
+  // Defence in depth for the browser: no framing, no sniffing, no referrer leakage, WebXR permissions.
   async headers() {
     return [
       {
@@ -16,7 +16,9 @@ const config: NextConfig = {
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+          { key: 'Permissions-Policy', value: 'xr-spatial-tracking=(self), camera=(), microphone=(), geolocation=()' },
         ],
       },
     ];

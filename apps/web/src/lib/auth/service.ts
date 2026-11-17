@@ -268,6 +268,13 @@ export class AuthService {
       .run(planId, userId, now);
   }
 
+  public getUserPlanIds(userId: string): string[] {
+    const rows = this.db
+      .prepare('SELECT plan_id FROM user_plan_ownership WHERE user_id = ?')
+      .all(userId) as { plan_id: string }[];
+    return rows.map((r) => r.plan_id);
+  }
+
   public verifyPlanOwnership(planId: string, userId: string): boolean {
     const row = this.db
       .prepare('SELECT user_id FROM user_plan_ownership WHERE plan_id = ?')
@@ -324,6 +331,11 @@ export class AuthService {
       if (session) {
         return { user: session.user, preferences: session.preferences, isDefault: false };
       }
+    }
+
+    // In production, unauthenticated requests must never silently assume the development default user
+    if (process.env.NODE_ENV === 'production') {
+      throw new AuthenticationError('Authentication required', 'unauthorized');
     }
 
     // Fallback to default user for local dev/unauthenticated baseline tests

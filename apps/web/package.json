@@ -13,7 +13,7 @@
     "start": "next start --hostname 127.0.0.1 --port 3000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:unit": "vitest run tests/lib.test.ts tests/architecture.test.ts tests/mcpClient.test.ts tests/app.component.test.tsx tests/agent.intent.test.ts tests/agent.security.test.ts tests/agent.orchestration.test.ts tests/agent.component.test.tsx tests/report.test.ts tests/agent.bedrock.test.ts",
+    "test:unit": "vitest run tests/lib.test.ts tests/architecture.test.ts tests/mcpClient.test.ts tests/app.component.test.tsx tests/agent.intent.test.ts tests/agent.security.test.ts tests/agent.orchestration.test.ts tests/agent.component.test.tsx tests/report.test.ts tests/agent.bedrock.test.ts tests/phase9.auth.test.ts tests/phase9.multiuser.test.ts tests/phase10.calendar.test.ts tests/phase11.intelligence.test.ts tests/phase12.security.test.ts tests/healthz.test.ts",
     "test:bedrock": "vitest run tests/agent.bedrock.test.ts",
     "test:bedrock:live": "tsx scripts/test-bedrock-live.ts",
     "test:integration": "vitest run tests/routes.integration.test.ts tests/agent.integration.test.ts",

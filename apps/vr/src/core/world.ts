@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RenderingError } from '../diagnostics/errorBoundary';
 import { logger } from '../logging/logger';
+import { SpatialPerformanceProfiler } from './performanceProfiler';
 
 export interface WorldOptions {
   container?: HTMLElement;
@@ -12,6 +13,7 @@ export class SpatialWorld {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer | null = null;
+  profiler: SpatialPerformanceProfiler | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeListener: (() => void) | null = null;
   private isDisposed = false;
@@ -91,6 +93,7 @@ export class SpatialWorld {
 
       container.appendChild(renderer.domElement);
       this.renderer = renderer;
+      this.profiler = new SpatialPerformanceProfiler(renderer);
 
       this.updateCameraAspect(container.clientWidth || 800, container.clientHeight || 600);
       this.setupResizeHandling(container);
@@ -145,6 +148,8 @@ export class SpatialWorld {
     this.renderer.setAnimationLoop((time, frame) => {
       if (this.isDisposed || !this.renderer) return;
 
+      this.profiler?.recordFrame(time);
+
       const delta = this.lastTime > 0 ? (time - this.lastTime) / 1000 : 0.016;
       this.lastTime = time;
 
@@ -159,6 +164,10 @@ export class SpatialWorld {
 
       this.renderer.render(this.scene, this.camera);
     });
+  }
+
+  setPostureEyeHeight(heightMeters: number): void {
+    this.camera.position.y = heightMeters;
   }
 
   onUpdate(callback: (delta: number, time: number, frame?: XRFrame) => void): () => void {

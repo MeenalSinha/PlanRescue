@@ -1,7 +1,8 @@
 import { callMcpTool } from '@/lib/mcpClient';
 import { rejectRecoveryPlanOutputSchema } from '@/lib/contract';
-import { ok, failFrom, readJson } from '@/lib/routeKit';
+import { ok, fail, failFrom, readJson } from '@/lib/routeKit';
 import { loadServerConfig } from '@/lib/env';
+import { getAuthService } from '@/lib/auth/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,13 @@ export async function POST(
 ) {
   try {
     const { planId } = await params;
+    const authService = getAuthService();
+    const authContext = authService.authenticateRequest(request);
+
+    if (!authService.verifyPlanOwnership(planId, authContext.user.id)) {
+      return fail('forbidden', 'You do not have permission to reject this recovery plan');
+    }
+
     let reason: string | undefined;
 
     try {

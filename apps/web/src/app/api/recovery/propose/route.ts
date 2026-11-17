@@ -74,6 +74,7 @@ export async function POST(request: Request) {
           candidate.persistentId = saved.id;
           candidate.savedStatus = saved.status;
           authService.recordPlanOwnership(saved.id, authContext.user.id);
+          authService.recordPlanOwnership(candidate.planId, authContext.user.id);
         }
       }
     }

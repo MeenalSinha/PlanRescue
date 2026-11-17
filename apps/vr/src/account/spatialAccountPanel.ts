@@ -2,16 +2,19 @@ import * as THREE from 'three';
 import type { CalendarProviderItem, User, UserPreferences } from '../api/contracts';
 import { SPATIAL_PALETTE } from '../ui/tokens';
 import { createTextTexture, SpatialButton, SpatialPanel } from '../ui/components';
+import { AccessibilityManager } from '../core/accessibilityManager';
 import { logger } from '../logging/logger';
 
 export interface AccountPanelCallbacks {
   onStrategyChange?: (strategy: 'minimal_disruption' | 'buffered_transitions' | 'priority_first') => void;
   onSignOut?: () => void;
   onSyncCalendar?: (provider: 'google' | 'outlook' | 'local') => void;
+  onPostureChange?: (mode: 'seated' | 'standing') => void;
+  onContrastToggle?: (highContrast: boolean) => void;
 }
 
 /**
- * 3D Spatial Account & Personalization Panel (Phase 9 & 10)
+ * 3D Spatial Account & Personalization Panel (Phase 9 & 10 & 13)
  * Shows the authenticated user profile, timezone, preferred strategy, external calendar status, and comfort controls.
  */
 export class SpatialAccountPanel extends SpatialPanel {
@@ -21,9 +24,11 @@ export class SpatialAccountPanel extends SpatialPanel {
   private readonly profileGroup: THREE.Group;
   private strategyButton: SpatialButton | null = null;
   private syncButton: SpatialButton | null = null;
+  private postureButton: SpatialButton | null = null;
+  private contrastButton: SpatialButton | null = null;
   private callbacks: AccountPanelCallbacks = {};
 
-  constructor(width = 0.76, height = 0.72) {
+  constructor(width = 0.76, height = 0.82) {
     super('User Account & Preferences', width, height, {
       accentColor: SPATIAL_PALETTE.primary,
     });
@@ -162,11 +167,41 @@ export class SpatialAccountPanel extends SpatialPanel {
     });
     this.group.add(this.strategyButton.group);
 
-    // Sync Calendars Button (Phase 10)
-    this.syncButton = new SpatialButton('Sync Calendars', 0.26, 0.045, {
+    // Posture Mode Button (Phase 13 Comfort)
+    this.postureButton = new SpatialButton('Posture: Seated (1.25m)', 0.28, 0.045, {
       accentColor: SPATIAL_PALETTE.primary,
     });
-    this.syncButton.setPosition(-0.14, -0.24, 0.02);
+    this.postureButton.setPosition(-0.14, -0.23, 0.02);
+    this.postureButton.onClick(() => {
+      const a11y = AccessibilityManager.getInstance();
+      const current = a11y.getPreferences().postureMode;
+      const nextMode = current === 'seated' ? 'standing' : 'seated';
+      a11y.updatePreferences({ postureMode: nextMode });
+      this.updateControls();
+      this.callbacks.onPostureChange?.(nextMode);
+    });
+    this.group.add(this.postureButton.group);
+
+    // High Contrast Button (Phase 13 Accessibility)
+    this.contrastButton = new SpatialButton('Contrast: Normal', 0.28, 0.045, {
+      accentColor: SPATIAL_PALETTE.primary,
+    });
+    this.contrastButton.setPosition(0.16, -0.23, 0.02);
+    this.contrastButton.onClick(() => {
+      const a11y = AccessibilityManager.getInstance();
+      const current = a11y.getPreferences().highContrast;
+      const nextVal = !current;
+      a11y.updatePreferences({ highContrast: nextVal });
+      this.updateControls();
+      this.callbacks.onContrastToggle?.(nextVal);
+    });
+    this.group.add(this.contrastButton.group);
+
+    // Sync Calendars Button (Phase 10)
+    this.syncButton = new SpatialButton('Sync Calendars', 0.24, 0.04, {
+      accentColor: SPATIAL_PALETTE.primary,
+    });
+    this.syncButton.setPosition(-0.14, -0.29, 0.02);
     this.syncButton.onClick(() => {
       logger.info('User requested calendar sync from Spatial Studio', 'SpatialAccountPanel');
       this.callbacks.onSyncCalendar?.('google');
@@ -174,10 +209,10 @@ export class SpatialAccountPanel extends SpatialPanel {
     this.group.add(this.syncButton.group);
 
     // Sign Out Button
-    const signOutBtn = new SpatialButton('Sign Out', 0.20, 0.045, {
+    const signOutBtn = new SpatialButton('Sign Out', 0.20, 0.04, {
       accentColor: SPATIAL_PALETTE.statusWarning,
     });
-    signOutBtn.setPosition(0.16, -0.24, 0.02);
+    signOutBtn.setPosition(0.16, -0.29, 0.02);
     signOutBtn.onClick(() => {
       logger.info('User initiated sign out from Spatial Studio', 'SpatialAccountPanel');
       this.callbacks.onSignOut?.();
@@ -193,6 +228,18 @@ export class SpatialAccountPanel extends SpatialPanel {
       priority_first: 'Strategy: Priority First',
     };
     this.strategyButton.setLabel(labels[this.preferences.preferredStrategy] || 'Strategy');
+
+    const a11y = AccessibilityManager.getInstance().getPreferences();
+    if (this.postureButton) {
+      this.postureButton.setLabel(
+        a11y.postureMode === 'seated' ? 'Posture: Seated (1.25m)' : 'Posture: Standing (1.60m)',
+      );
+    }
+    if (this.contrastButton) {
+      this.contrastButton.setLabel(
+        a11y.highContrast ? 'Contrast: High' : 'Contrast: Normal',
+      );
+    }
   }
 
   override dispose(): void {

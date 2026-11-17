@@ -6,6 +6,7 @@ import { agentTurnRequestSchema } from '@/lib/agent/schemas';
 import { runAgentTurn } from '@/lib/agent/orchestrator';
 import { AgentProviderError, loadAgentConfig } from '@/lib/agent/provider';
 import type { ToolActivity } from '@/lib/api';
+import { sanitizeInput } from '@/lib/security/sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,8 +69,9 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const activity: ToolActivity[] = [];
   try {
+    const cleanMessage = sanitizeInput(parsed.data.message);
     const result = await runAgentTurn({
-      message: parsed.data.message,
+      message: cleanMessage,
       date: parsed.data.date,
       window: parsed.data.window,
       history: parsed.data.history,

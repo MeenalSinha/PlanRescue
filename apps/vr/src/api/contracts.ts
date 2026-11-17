@@ -358,6 +358,17 @@ export const spatialComfortSchema = z.object({
 }).passthrough();
 export type SpatialComfort = z.infer<typeof spatialComfortSchema>;
 
+export const accessibilityPreferencesSchema = z.object({
+  highContrast: z.boolean().default(false),
+  textScale: z.number().min(0.8).max(1.5).default(1.0),
+  reducedMotion: z.boolean().default(false),
+  colorblindFriendly: z.boolean().default(true),
+  interactionMode: z.enum(['hands', 'controllers', 'desktop']).default('hands'),
+  postureMode: z.enum(['seated', 'standing']).default('seated'),
+  studioEyeHeight: z.number().default(1.25),
+}).passthrough();
+export type AccessibilityPreferences = z.infer<typeof accessibilityPreferencesSchema>;
+
 export const userPreferencesSchema = z.object({
   userId: z.string(),
   timezone: z.string().default('Asia/Kolkata'),
@@ -372,6 +383,7 @@ export const userPreferencesSchema = z.object({
     handRayEnabled: true,
     hapticFeedback: true,
   }),
+  accessibility: accessibilityPreferencesSchema.optional(),
   updatedAt: z.string(),
 }).passthrough();
 export type UserPreferences = z.infer<typeof userPreferencesSchema>;

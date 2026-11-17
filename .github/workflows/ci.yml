@@ -21,13 +21,24 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             apps/web/package-lock.json
+            apps/vr/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - name: Build and run all backend tests (unit + real MCP client over Streamable HTTP)
         run: npm test
+      - name: Verify automated database backup and restore
+        run: npx vitest run tests/backupRestore.test.ts
       - name: Install the web interface
         working-directory: apps/web
         run: npm ci
       - run: npm run typecheck:web
       - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
         run: npm run test:web
+      - name: Install the spatial VR application
+        working-directory: apps/vr
+        run: npm ci
+      - run: npm run vr:typecheck
+      - name: Run all spatial VR tests (Three.js, WebXR, hand interactions, accessibility, optimization)
+        run: npm run vr:test
+      - name: Verify production build for spatial VR app
+        run: npm run vr:build

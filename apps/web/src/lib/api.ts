@@ -33,6 +33,7 @@ export type ApiErrorCode =
   | 'unauthorized'
   | 'forbidden'
   | 'conflict'
+  | 'rate_limited'
   | 'payload_too_large'
   | 'mcp_unavailable'
   | 'mcp_timeout'

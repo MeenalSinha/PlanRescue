@@ -11,6 +11,7 @@ const STATUS: Record<ApiErrorCode, number> = {
   unauthorized: 401,
   forbidden: 403,
   conflict: 409,
+  rate_limited: 429,
   payload_too_large: 413,
   mcp_tool_error: 422,
   mcp_unavailable: 503,

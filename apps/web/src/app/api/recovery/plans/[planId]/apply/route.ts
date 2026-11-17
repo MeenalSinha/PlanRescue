@@ -4,6 +4,7 @@ import { ok, fail, failFrom } from '@/lib/routeKit';
 import { loadServerConfig } from '@/lib/env';
 import { getAuthService } from '@/lib/auth/service';
 import { getCalendarSyncManager } from '@/lib/calendar/syncManager';
+import { getGlobalRateLimiter } from '@/lib/security/rateLimiter';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,12 @@ export async function POST(
 
     if (!authService.verifyPlanOwnership(planId, authContext.user.id)) {
       return fail('forbidden', 'You do not have permission to execute this recovery plan');
+    }
+
+    const limiter = getGlobalRateLimiter();
+    const limitCheck = limiter.check(`apply:${authContext.user.id}`, 30, 60_000);
+    if (!limitCheck.allowed) {
+      return fail('rate_limited', 'Too many recovery plan execution requests. Please wait before retrying.');
     }
 
     const config = loadServerConfig();

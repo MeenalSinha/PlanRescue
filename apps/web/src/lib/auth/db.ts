@@ -136,41 +136,43 @@ export function getAuthDatabase(dbPath?: string): Db {
     );
   `);
 
-  // Ensure default development user exists
-  const now = new Date().toISOString();
-  const existingDefault = db.prepare('SELECT id FROM users WHERE id = ?').get(DEFAULT_USER_ID);
-  if (!existingDefault) {
-    const defaultPassHash = hashPassword('PlanRescue2026!');
-    db.prepare(`
-      INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      DEFAULT_USER_ID,
-      'user@planrescue.local',
-      defaultPassHash,
-      'PlanRescue Studio User',
-      now,
-      now,
-    );
+  // Ensure default development user exists ONLY when NOT in production
+  if (process.env.NODE_ENV !== 'production') {
+    const now = new Date().toISOString();
+    const existingDefault = db.prepare('SELECT id FROM users WHERE id = ?').get(DEFAULT_USER_ID);
+    if (!existingDefault) {
+      const defaultPassHash = hashPassword('PlanRescue2026!');
+      db.prepare(`
+        INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        DEFAULT_USER_ID,
+        'user@planrescue.local',
+        defaultPassHash,
+        'PlanRescue Studio User',
+        now,
+        now,
+      );
 
-    db.prepare(`
-      INSERT OR IGNORE INTO user_preferences (
-        user_id, timezone, working_days_json, working_hours_start, working_hours_end,
-        preferred_strategy, preferred_buffer_minutes, focus_periods_json,
-        spatial_comfort_json, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      DEFAULT_USER_ID,
-      'Asia/Kolkata',
-      JSON.stringify(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']),
-      '09:00',
-      '18:00',
-      'minimal_disruption',
-      10,
-      JSON.stringify([]),
-      JSON.stringify({ viewDistance: 1.4, handRayEnabled: true, hapticFeedback: true }),
-      now,
-    );
+      db.prepare(`
+        INSERT OR IGNORE INTO user_preferences (
+          user_id, timezone, working_days_json, working_hours_start, working_hours_end,
+          preferred_strategy, preferred_buffer_minutes, focus_periods_json,
+          spatial_comfort_json, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        DEFAULT_USER_ID,
+        'Asia/Kolkata',
+        JSON.stringify(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']),
+        '09:00',
+        '18:00',
+        'minimal_disruption',
+        10,
+        JSON.stringify([]),
+        JSON.stringify({ viewDistance: 1.4, handRayEnabled: true, hapticFeedback: true }),
+        now,
+      );
+    }
   }
 
   if (!dbPath) {

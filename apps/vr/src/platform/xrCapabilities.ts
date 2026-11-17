@@ -1,5 +1,7 @@
 import { logger } from '../logging/logger';
 
+export type HardwareTier = 'quest-3' | 'quest-pro' | 'quest-2' | 'generic-xr' | 'emulated' | 'desktop-fallback';
+
 export interface XrCapabilityReport {
   isSecureContext: boolean;
   hasNavigatorXr: boolean;
@@ -9,6 +11,8 @@ export interface XrCapabilityReport {
   handTrackingSupportedByBrowser: boolean;
   currentInputSources: XrInputSourceSummary[];
   isEmulatedEnvironment: boolean;
+  hardwareTier: HardwareTier;
+  deviceLabel: string;
   canEnterImmersiveVr: boolean;
   reasonsUnsupported: string[];
 }
@@ -58,6 +62,35 @@ export class XrCapabilityDetector {
   }
 
   /**
+   * Detects the underlying hardware tier and user-facing device label.
+   */
+  detectHardwareTier(isEmulated: boolean): { tier: HardwareTier; label: string } {
+    if (isEmulated) {
+      return { tier: 'emulated', label: 'Desktop XR Emulation (IWER / WebXR Simulator)' };
+    }
+
+    if (typeof navigator === 'undefined') {
+      return { tier: 'desktop-fallback', label: 'Headless / Test Runtime' };
+    }
+
+    const ua = navigator.userAgent || '';
+    if (/Quest 3/i.test(ua)) {
+      return { tier: 'quest-3', label: 'Meta Quest 3 (Physical Hardware)' };
+    }
+    if (/Quest Pro/i.test(ua)) {
+      return { tier: 'quest-pro', label: 'Meta Quest Pro (Physical Hardware)' };
+    }
+    if (/Quest 2/i.test(ua)) {
+      return { tier: 'quest-2', label: 'Meta Quest 2 (Physical Hardware)' };
+    }
+    if (/OculusBrowser/i.test(ua) || /Quest/i.test(ua)) {
+      return { tier: 'generic-xr', label: 'Meta Quest Horizon OS (Physical Hardware)' };
+    }
+
+    return { tier: 'desktop-fallback', label: 'Desktop 2.5D Fallback Canvas' };
+  }
+
+  /**
    * Performs a comprehensive runtime capabilities check.
    */
   async detectCapabilities(): Promise<XrCapabilityReport> {
@@ -66,6 +99,7 @@ export class XrCapabilityDetector {
       typeof navigator !== 'undefined' && 'xr' in navigator && Boolean(navigator.xr);
     const hasWebGL2 = this.checkWebGL2Support();
     const isEmulated = this.detectEmulation();
+    const { tier: hardwareTier, label: deviceLabel } = this.detectHardwareTier(isEmulated);
 
     const reasons: string[] = [];
 
@@ -108,6 +142,8 @@ export class XrCapabilityDetector {
       handTrackingSupportedByBrowser,
       currentInputSources: [],
       isEmulatedEnvironment: isEmulated,
+      hardwareTier,
+      deviceLabel,
       canEnterImmersiveVr,
       reasonsUnsupported: reasons,
     };
@@ -115,6 +151,8 @@ export class XrCapabilityDetector {
     logger.debug('Capabilities', 'XR Capability detection completed', {
       canEnterImmersiveVr: report.canEnterImmersiveVr,
       isEmulated: report.isEmulatedEnvironment,
+      hardwareTier: report.hardwareTier,
+      deviceLabel: report.deviceLabel,
       reasons: report.reasonsUnsupported,
     });
 

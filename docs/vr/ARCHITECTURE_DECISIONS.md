@@ -225,3 +225,43 @@ Implement `SpatialApprovalWorkflow` and `SpatialActionHistoryPanel`:
 - Step 2: Separate "Confirm & Execute Schedule Changes" action button becomes active. Clicking triggers `POST /api/recovery/plans/[planId]/apply`. The backend atomically commits changes within a SQLite transaction.
 - If the backend rejects application due to schedule staleness (e.g. concurrent update or hash mismatch), the workflow detects the error, displays a stale warning, and guides the user to recalculate.
 - After execution, `SpatialActionHistoryPanel` renders the persistent audit trail fetched from `GET /api/actions/history`.
+
+---
+
+## ADR-014: Three.js Resource Caching & XR Performance Profiling (Phase 13)
+
+### Context
+Meta Quest runtimes enforce strict frame budgets (11.11ms for 90Hz, 13.88ms for 72Hz). Redundant geometry/material allocations cause memory fragmentation and garbage collection pauses, which result in dropped frames and simulator sickness.
+
+### Decision
+Implement `SpatialResourceCache` and `SpatialPerformanceProfiler`:
+- `SpatialResourceCache` caches and deduplicates common `PlaneGeometry`, `BoxGeometry`, `SphereGeometry`, and glassmorphic materials by dimension and property keys across all UI panels.
+- `SpatialUIElement.dispose()` explicitly traverses meshes, disposing geometries, materials, and attached textures (`CanvasTexture`) to guarantee zero GPU memory leaks.
+- `SpatialPerformanceProfiler` samples instantaneous frame times, computes rolling average FPS, tracks draw calls and triangle counts, and flags budget strains against 72Hz and 90Hz envelopes.
+
+---
+
+## ADR-015: Ergonomic Posture Envelopes & Accessible Signifiers (Phase 13)
+
+### Context
+Users interact with spatial productivity apps in diverse physical environments (seated at desks vs standing). Additionally, relying purely on color for status indicators (green/red) fails colorblind accessibility guidelines.
+
+### Decision
+Implement `AccessibilityManager` and dynamic posture adaptation:
+- Enforce ergonomic comfort envelope: Seated eye height baseline of 1.25m and standing eye height of 1.60m with -15° to -25° downward gaze cone to prevent neck fatigue.
+- Support non-color status signifiers: Prepend text symbols (`[✓] Valid`, `[!] At Risk`, `[✕] Infeasible`) to color chips so status is instantly discernible without color perception.
+- Provide reduced-motion toggle: Suppresses animated panel fly-ins and zooms for vestibular sensitivity.
+
+---
+
+## ADR-016: Production SQLite WAL Checkpointing, Atomic Backups & Multi-Tier Health Probes (Phase 14)
+
+### Context
+Production deployments require deterministic disaster recovery, point-in-time consistent backups without taking the database offline, and standardized container orchestrator probes.
+
+### Decision
+Implement `backupDatabase()`, `restoreDatabase()`, and dual-probe `/api/healthz`:
+- Online Backups: `backupDatabase()` executes `PRAGMA wal_checkpoint(TRUNCATE)` to ensure 100% of committed state is flushed to the main SQLite file, copies the file atomically, and generates a SHA-256 verification manifest.
+- Disaster Recovery: `restoreDatabase()` validates checksums against the manifest, swaps database files, and executes `PRAGMA integrity_check` before accepting connections.
+- Observability: `/api/healthz` supports `?probe=liveness` (fast process check) and `?probe=readiness` (deep probe verifying SQLite connectivity, WAL mode, and server configuration).
+- Security: Next.js headers enforce CSP, HSTS, `X-Content-Type-Options: nosniff`, and `Permissions-Policy: xr-spatial-tracking=(self)`.

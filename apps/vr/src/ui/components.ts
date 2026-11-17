@@ -119,10 +119,15 @@ export class SpatialUIElement {
     this.group.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.geometry.dispose();
+        const disposeMat = (m: THREE.Material) => {
+          if ('map' in m && (m as any).map) (m as any).map.dispose();
+          if ('alphaMap' in m && (m as any).alphaMap) (m as any).alphaMap.dispose();
+          m.dispose();
+        };
         if (Array.isArray(obj.material)) {
-          obj.material.forEach((m) => m.dispose());
+          obj.material.forEach(disposeMat);
         } else if (obj.material) {
-          obj.material.dispose();
+          disposeMat(obj.material);
         }
       }
     });
