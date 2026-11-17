@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { getAuthService } from '@/lib/auth/service';
 import { getCalendarSyncManager } from '@/lib/calendar/syncManager';
-import { DEFAULT_DATE, DEFAULT_PLANNING_END, DEFAULT_PLANNING_START } from '@/lib/constants';
+import { getDefaultDate, DEFAULT_PLANNING_END, DEFAULT_PLANNING_START } from '@/lib/constants';
 import { loadServerConfig } from '@/lib/env';
 import { MAX_BODY_BYTES } from '@/lib/requests';
 import { fail, ok, readJson } from '@/lib/routeKit';
@@ -32,8 +32,9 @@ export async function POST(request: Request) {
 
   try {
     const config = loadServerConfig();
-    const targetDate = parsed.data.date || DEFAULT_DATE;
-    const window = dayWindow(targetDate, authContext.preferences.timezone || config.calendarTimeZone);
+    const tz = authContext.preferences.timezone || config.calendarTimeZone;
+    const targetDate = parsed.data.date || getDefaultDate(tz);
+    const window = dayWindow(targetDate, tz);
 
     const syncManager = getCalendarSyncManager();
     const result = await syncManager.syncEvents(

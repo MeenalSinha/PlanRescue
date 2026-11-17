@@ -28,6 +28,7 @@
     "db:inspect": "tsx scripts/db-inspect.ts",
     "db:backup": "tsx scripts/backup-db.ts",
     "db:restore": "tsx scripts/restore-db.ts",
+    "audit:leaks": "tsx scripts/audit-leak-check.ts",
     "check": "npm run typecheck && npm test && npm run typecheck:web && npm run test:web",
     "test:recovery": "vitest run tests/recovery-time.test.ts tests/recovery-task-capacity.test.ts tests/recovery-analyze.test.ts tests/recovery-generate.test.ts tests/recovery-validate.test.ts",
     "setup": "npm ci && npm --prefix apps/web ci",

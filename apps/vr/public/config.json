@@ -1,11 +1,9 @@
 {
-  "appEnv": "development",
-  "apiBaseUrl": "http://127.0.0.1:3000",
   "logLevel": "info",
   "requestTimeoutMs": 15000,
   "xr": {
     "sessionMode": "immersive-vr",
     "enableHandTracking": true,
-    "enableEmulation": true
+    "enableEmulation": false
   }
 }

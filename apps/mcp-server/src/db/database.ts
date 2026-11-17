@@ -61,17 +61,55 @@ export function openDatabase(path: string): { db: Db; schemaVersion: number } {
   }
 }
 
+export interface InitializeDatabaseOptions {
+  seed?: boolean;
+}
+
 /**
- * Full startup initialization: open, migrate, then seed missing sample records.
- * Safe to run repeatedly against the same file; existing rows are never overwritten.
+ * Full startup initialization: open, migrate, and conditionally seed sample records.
+ *
+ * Production Invariants:
+ * - Production databases are NEVER seeded automatically.
+ * - Sample data seeding is strictly gated to non-production environments with explicit configuration.
  */
-export function initializeDatabase(path: string, logger?: Logger): InitializedDatabase {
+export function initializeDatabase(
+  path: string,
+  logger?: Logger,
+  options?: InitializeDatabaseOptions | boolean,
+): InitializedDatabase {
   const { db, schemaVersion } = openDatabase(path);
   try {
-    const seeded = seedDatabase(db);
-    logger?.debug(
-      `Database ready: schema v${schemaVersion}/${LATEST_SCHEMA_VERSION}, seeded ${seeded.eventsInserted} events and ${seeded.tasksInserted} tasks`,
-    );
+    const isProduction =
+      process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    let shouldSeed = false;
+    if (typeof options === 'boolean') {
+      shouldSeed = options && !isProduction;
+    } else if (options && typeof options.seed === 'boolean') {
+      shouldSeed = options.seed && !isProduction;
+    } else if (isProduction) {
+      shouldSeed = false;
+    } else if (process.env.SEED_SAMPLE_DATA === 'true') {
+      shouldSeed = true;
+    } else if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+      // In automated test runner, maintain default test fixture behavior unless explicitly turned off
+      shouldSeed = true;
+    }
+
+    const seeded = shouldSeed
+      ? seedDatabase(db)
+      : { eventsInserted: 0, tasksInserted: 0 };
+
+    if (shouldSeed) {
+      logger?.debug(
+        `Database ready: schema v${schemaVersion}/${LATEST_SCHEMA_VERSION}, seeded ${seeded.eventsInserted} events and ${seeded.tasksInserted} tasks`,
+      );
+    } else {
+      logger?.debug(
+        `Database ready: schema v${schemaVersion}/${LATEST_SCHEMA_VERSION} (sample data seeding disabled)`,
+      );
+    }
+
     return { db, path, schemaVersion, seeded };
   } catch (error) {
     try {
@@ -79,7 +117,9 @@ export function initializeDatabase(path: string, logger?: Logger): InitializedDa
     } catch {
       // ignore
     }
-    throw new DatabaseInitError(`Could not seed the SQLite database at ${path}: ${describe(error)}`, { cause: error });
+    throw new DatabaseInitError(`Could not initialize or seed the SQLite database at ${path}: ${describe(error)}`, {
+      cause: error,
+    });
   }
 }
 

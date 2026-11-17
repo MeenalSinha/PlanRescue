@@ -8,11 +8,11 @@
 ## 1. Executive Summary & Verification Methodology
 
 PlanRescue Spatial is architected specifically for Meta Quest headsets running Horizon OS and compliant WebXR browsers. In strict accordance with the **Honest Verification Invariant**, this document explicitly distinguishes between:
-1. **Automated Unit & Integration Test Coverage** (Vitest in Node.js / JSDOM / Chromium headless environments).
+1. **Automated Unit & Integration Test Coverage** (Vitest in Node.js / JSDOM / WebXR API mocks).
 2. **Desktop XR Emulation** (using the Meta WebXR Simulator / Immersive Web Emulation Runtime — IWER).
 3. **Physical Hardware Verification** (tested on physical Meta Quest headsets).
 
-Claims of testing and performance are never conflated between emulated environments and physical hardware.
+Claims of testing and performance are never conflated between emulated environments and physical hardware. In the current engineering environment without connected physical headset hardware, physical device execution is marked as **BLOCKED (Pending physical Meta Quest hardware)**.
 
 ---
 
@@ -32,17 +32,18 @@ Claims of testing and performance are never conflated between emulated environme
 
 ---
 
-## 3. Rendering Budget & Performance Envelope
+## 3. Rendering Budget & Performance Envelope (Simulated Target vs Physical Profile)
 
-To prevent frame drops, reprojection artifacts, and visual discomfort in WebXR, PlanRescue Spatial enforces the following runtime resource budgets:
+> [!NOTE]
+> The benchmark values below reflect **desktop WebXR simulation and Three.js draw call profiling** under standard 3-zone scene loads. On-device hardware GPU profiling via Meta Quest Developer Hub (MQDH) / OVR Metrics Tool is pending physical hardware deployment.
 
-| Metric | Target Budget | Warning Threshold | Critical Threshold | PlanRescue Spatial Benchmark |
-|---|---|---|---|---|
-| **Frame Time (90Hz)** | ≤ 11.11 ms | > 11.11 ms | > 13.88 ms | **~8.2 ms** (in standard 3-zone layout) |
-| **Draw Calls per Frame** | ≤ 60 calls | 61 – 80 calls | > 80 calls | **38 – 48 calls** (via geometry & material caching) |
-| **Polygon / Triangle Count** | ≤ 50,000 tris | 50,000 – 80,000 tris | > 100,000 tris | **~24,500 tris** |
-| **Active Texture Memory** | ≤ 30 MB | 30 – 50 MB | > 65 MB | **~18 MB** (via CanvasTexture disposal) |
-| **Hand Raycast Frequency** | Throttled to interactables | Full scene graph | Continuous unthrottled | **Interactive layer only** |
+| Metric | Target Budget | Warning Threshold | Critical Threshold | Simulated WebXR Benchmark | Physical On-Headset Status |
+|---|---|---|---|---|---|
+| **Frame Time (90Hz)** | ≤ 11.11 ms | > 11.11 ms | > 13.88 ms | **~8.2 ms** (in standard 3-zone layout) | BLOCKED (Pending physical Meta Quest hardware) |
+| **Draw Calls per Frame** | ≤ 60 calls | 61 – 80 calls | > 80 calls | **38 – 48 calls** (geometry & material caching) | BLOCKED (Pending physical Meta Quest hardware) |
+| **Polygon / Triangle Count** | ≤ 50,000 tris | 50,000 – 80,000 tris | > 100,000 tris | **~24,500 tris** | BLOCKED (Pending physical Meta Quest hardware) |
+| **Active Texture Memory** | ≤ 30 MB | 30 – 50 MB | > 65 MB | **~18 MB** (CanvasTexture disposal) | BLOCKED (Pending physical Meta Quest hardware) |
+| **Hand Raycast Frequency** | Throttled to interactables | Full scene graph | Continuous unthrottled | **Interactive layer only** | BLOCKED (Pending physical Meta Quest hardware) |
 
 ---
 
@@ -50,21 +51,21 @@ To prevent frame drops, reprojection artifacts, and visual discomfort in WebXR, 
 
 | Feature / Subsystem | Automated Test Status | Desktop XR Emulation (IWER) | Physical Quest Hardware Status | Notes |
 |---|---|---|---|---|
-| **WebXR Session Entry (`immersive-vr`)** | Verified (3 tests) | Verified (IWER) | Verified via Meta Quest Browser v35 | Requires secure context (`https://` or `localhost`) |
-| **Three-Zone Curved Layout** | Verified (5 tests) | Verified (IWER) | Verified on Quest 3 | Panels positioned within 1.25m–1.40m comfort arc |
-| **Hand Tracking & Joint Recognition** | Verified (6 tests) | Simulated (IWER Hands) | Verified on Quest 3 (Optical tracking) | 26 joints tracked; index/thumb pinch detected |
-| **Pinch Hysteresis (3.5cm -> 5.0cm)** | Verified (6 tests) | Verified | Verified | Prevents unintended drop on micro-tremors |
-| **Drag-Plane Stabilization** | Verified (6 tests) | Verified | Verified | Constrains grabbed event blocks to ergonomic plane |
-| **Controller Fallback (Touch / Touch Plus)** | Verified (3 tests) | Verified | Verified | Raycast pointing via trigger and grip buttons |
+| **WebXR Session Entry (`immersive-vr`)** | Verified (3 tests) | Verified (IWER) | **BLOCKED (Pending physical Meta Quest hardware)** | Requires secure context (`https://` or `localhost`) |
+| **Three-Zone Curved Layout** | Verified (5 tests) | Verified (IWER) | **BLOCKED (Pending physical Meta Quest hardware)** | Panels positioned within 1.25m–1.40m comfort arc |
+| **Hand Tracking & Joint Recognition** | Verified (6 tests) | Simulated (IWER Hands) | **BLOCKED (Pending physical Meta Quest hardware)** | 26 joints tracked; index/thumb pinch detected |
+| **Pinch Hysteresis (3.5cm -> 5.0cm)** | Verified (6 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Prevents unintended drop on micro-tremors |
+| **Drag-Plane Stabilization** | Verified (6 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Constrains grabbed event blocks to ergonomic plane |
+| **Controller Fallback (Touch / Touch Plus)** | Verified (3 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Raycast pointing via trigger and grip buttons |
 | **Desktop 2.5D Fallback Canvas** | Verified (3 tests) | N/A | N/A | Mouse hover/click emulation for non-XR browsers |
-| **Two-Step Approval & Execution Confirmation** | Verified (18 tests) | Verified | Verified | Candidate selection != Approval; Approval != Execution |
-| **Stale Plan Snapshot Detection** | Verified (4 tests) | Verified | Verified | Returns 409 / error when underlying schedule changes |
-| **Multi-User Data Isolation** | Verified (13 tests) | Verified | Verified | User A cannot inspect, approve, or execute User B plans |
-| **External Calendar Sync Outbox** | Verified (7 tests) | Verified | Verified | Google/Outlook token AES-256-GCM encryption at rest |
-| **Productivity Health Score (0–100)** | Verified (4 tests) | Verified | Verified | Deterministic metrics; no AI hallucination |
-| **Spatial Comfort (Seated vs Standing)** | Verified (7 tests) | Verified | Verified | Seated: 1.25m eye height; Standing: 1.60m eye height |
-| **Accessibility: Non-Color Badges** | Verified (7 tests) | Verified | Verified | `[✓]`, `[!]`, `[✕]` text chips for colorblind users |
-| **Accessibility: Reduced Motion** | Verified (7 tests) | Verified | Verified | Disables flying panel animations |
+| **Two-Step Approval & Execution Confirmation** | Verified (18 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Candidate selection != Approval; Approval != Execution |
+| **Stale Plan Snapshot Detection** | Verified (4 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Returns 409 / error when underlying schedule changes |
+| **Multi-User Data Isolation** | Verified (13 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | User A cannot inspect, approve, or execute User B plans |
+| **External Calendar Sync Outbox** | Verified (7 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Google/Outlook token AES-256-GCM encryption at rest |
+| **Productivity Health Score (0–100)** | Verified (4 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Deterministic metrics; no AI hallucination |
+| **Spatial Comfort (Seated vs Standing)** | Verified (7 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Seated: 1.25m eye height; Standing: 1.60m eye height |
+| **Accessibility: Non-Color Badges** | Verified (7 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | `[✓]`, `[!]`, `[✕]` text chips for colorblind users |
+| **Accessibility: Reduced Motion** | Verified (7 tests) | Verified | **BLOCKED (Pending physical Meta Quest hardware)** | Disables flying panel animations |
 
 ---
 

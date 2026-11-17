@@ -41,7 +41,7 @@ export function validateEnvironment(env: Record<string, string | undefined> = pr
       if (activeSecret.length < 32) {
         errors.push(`Production secret must be at least 32 characters long (current length: ${activeSecret.length}).`);
       }
-      if (activeSecret.includes('planrescue-spatial-internal-key-2026!') || activeSecret.includes('your-secure-random')) {
+      if (/(?:planrescue-spatial-internal-key|your-secure-random|dev-only-secret)/i.test(activeSecret)) {
         errors.push('Production secret cannot use default template or placeholder strings.');
       }
     }

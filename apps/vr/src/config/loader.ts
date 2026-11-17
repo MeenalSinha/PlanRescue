@@ -54,13 +54,37 @@ export function parseConfigFromEnv(env: Record<string, string | undefined>): Rec
 }
 
 /**
+ * Merges configuration sources with explicit precedence:
+ * Priority (highest to lowest):
+ * 1. window.__PLANRESCUE_VR_CONFIG__ (runtime injection)
+ * 2. Environment variables (deployment / build-time env)
+ * 3. Static fallback file (/config.json)
+ */
+export function mergeConfigSources(
+  fileRaw: Record<string, unknown> = {},
+  envRaw: Record<string, unknown> = {},
+  windowRaw: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...fileRaw,
+    ...envRaw,
+    ...windowRaw,
+    xr: {
+      ...(typeof fileRaw.xr === 'object' && fileRaw.xr ? (fileRaw.xr as Record<string, unknown>) : {}),
+      ...(typeof envRaw.xr === 'object' && envRaw.xr ? (envRaw.xr as Record<string, unknown>) : {}),
+      ...(typeof windowRaw.xr === 'object' && windowRaw.xr ? (windowRaw.xr as Record<string, unknown>) : {}),
+    },
+  };
+}
+
+/**
  * Loads configuration with runtime priority:
  * 1. window.__PLANRESCUE_VR_CONFIG__ (runtime injection)
- * 2. Fetched /config.json (runtime file, if available)
- * 3. Environment variables (Vite build-time env)
+ * 2. Environment variables (Vite build-time or deployment env)
+ * 3. Fetched /config.json (static fallback file, if available)
  */
 export async function loadRuntimeConfig(): Promise<VrConfig> {
-  // Step 1: Collect environment-based defaults
+  // Step 1: Collect environment-based configuration
   const envSource = typeof import.meta !== 'undefined' && import.meta.env
     ? (import.meta.env as Record<string, string | undefined>)
     : {};
@@ -84,17 +108,19 @@ export async function loadRuntimeConfig(): Promise<VrConfig> {
     ? (window.__PLANRESCUE_VR_CONFIG__ as Record<string, unknown>)
     : {};
 
-  // Merge with priority: window injection > file config > env variables
-  const merged: Record<string, unknown> = {
-    ...envRaw,
-    ...fileRaw,
-    ...windowRaw,
-    xr: {
-      ...(typeof envRaw.xr === 'object' && envRaw.xr ? envRaw.xr : {}),
-      ...(typeof fileRaw.xr === 'object' && fileRaw.xr ? fileRaw.xr : {}),
-      ...(typeof windowRaw.xr === 'object' && windowRaw.xr ? windowRaw.xr : {}),
-    },
-  };
+  // Merge with strict priority: window injection > env vars > static file
+  const merged = mergeConfigSources(fileRaw, envRaw, windowRaw);
+
+  // If in browser and apiBaseUrl is still not set, default to origin if http/https
+  if (
+    !merged.apiBaseUrl &&
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    window.location.origin !== 'null' &&
+    window.location.origin.startsWith('http')
+  ) {
+    merged.apiBaseUrl = window.location.origin;
+  }
 
   return validateConfig(merged);
 }

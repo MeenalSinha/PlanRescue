@@ -93,6 +93,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
       LOG_LEVEL: 'info',
       MCP_ALLOWED_HOSTS: '',
       DATABASE_PATH: databasePath,
+      SEED_SAMPLE_DATA: 'true',
       ...(options.env ?? {}),
     },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],

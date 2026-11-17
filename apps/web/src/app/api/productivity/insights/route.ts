@@ -1,4 +1,5 @@
 import { getAuthService } from '@/lib/auth/service';
+import { getDefaultDate } from '@/lib/constants';
 import { scheduleOutputSchema, tasksOutputSchema } from '@/lib/contract';
 import { loadServerConfig } from '@/lib/env';
 import { analyzeProductivity } from '@/lib/intelligence/productivityEngine';
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const dateParam = url.searchParams.get('date');
-    const targetDate = dateParam && isValidDate(dateParam) ? dateParam : '2026-10-22';
+    const targetDate = dateParam && isValidDate(dateParam) ? dateParam : getDefaultDate(prefs.timezone);
 
     const config = loadServerConfig();
     const window = dayWindow(targetDate, prefs.timezone);

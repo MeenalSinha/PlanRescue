@@ -40,12 +40,13 @@ describe('Spatial Phase 12: Security, Privacy & Reliability Hardening', () => {
 
   describe('AES-256-GCM Authenticated Encryption', () => {
     it('encrypts and decrypts credentials with authentication tag verification', () => {
-      const secretToken = 'ya29.a0AfH6SMD_Mock_OAuth_Refresh_Token_Secret_XYZ';
+      const secretToken = 'ya29.a0AfH6SMD_OAuth_Refresh_Token_Secret_XYZ';
       const encrypted = encryptData(secretToken);
 
       expect(encrypted).not.toContain(secretToken);
+      expect(encrypted.startsWith('v2.')).toBe(true);
       const parts = encrypted.split('.');
-      expect(parts.length).toBe(3); // iv.tag.ciphertext
+      expect(parts.length).toBe(5); // v2.salt.iv.tag.ciphertext
 
       const decrypted = decryptData(encrypted);
       expect(decrypted).toBe(secretToken);
@@ -55,8 +56,8 @@ describe('Spatial Phase 12: Security, Privacy & Reliability Hardening', () => {
       const secretToken = 'super-secret-graph-key';
       const encrypted = encryptData(secretToken);
       const parts = encrypted.split('.');
-      // Tamper with the ciphertext
-      const tampered = `${parts[0]}.${parts[1]}.deadbeef${parts[2]}`;
+      // Tamper with the ciphertext component
+      const tampered = `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3]}.deadbeef${parts[4]}`;
 
       expect(() => decryptData(tampered)).toThrow();
     });

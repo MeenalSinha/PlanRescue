@@ -134,3 +134,21 @@ export function wallClockAt(epochMs: number, offset: string): string {
   const [h, m] = offset.slice(1).split(':').map(Number) as [number, number];
   return new Date(epochMs + sign * (h * 60 + m) * 60_000).toISOString().slice(11, 16);
 }
+
+/**
+ * Today's date formatted as YYYY-MM-DD in the provided IANA time zone.
+ */
+export function todayInZone(timeZone: string = 'Asia/Kolkata'): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+

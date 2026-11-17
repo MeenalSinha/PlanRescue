@@ -12,6 +12,11 @@ import type {
 import { GoogleCalendarProvider } from './providers/google';
 import { OutlookCalendarProvider } from './providers/outlook';
 
+function isForbiddenToken(token: string): boolean {
+  const isForbidden = /^(?:mock[-_]|token_simulated|dummy[-_]|simulated_oauth)/i.test(token);
+  return isForbidden;
+}
+
 export class CalendarSyncManager {
   private readonly db: Db;
   private customProviderFactory?: (type: CalendarProviderType, token: string) => CalendarProvider;
@@ -35,13 +40,14 @@ export class CalendarSyncManager {
     }
   }
 
-  private decryptAccessToken(storedToken?: string): string {
-    if (!storedToken) return 'dummy-token';
+  private decryptAccessToken(storedToken?: string | null): string {
+    if (!storedToken) {
+      throw new Error('No encrypted access token found for account');
+    }
     try {
       return decryptData(storedToken);
     } catch {
-      // In case of unencrypted test tokens or legacy tokens
-      return storedToken;
+      throw new Error('Failed to decrypt calendar credentials: token corrupted or secret mismatch');
     }
   }
 
@@ -49,29 +55,55 @@ export class CalendarSyncManager {
     userId: string,
     provider: CalendarProviderType,
     accountEmail: string,
-    accessToken = 'mock-access-token',
-    refreshToken = 'mock-refresh-token',
+    accessToken: string,
+    refreshToken?: string,
+    expiresInSeconds?: number,
   ): ExternalCalendarAccount {
+    if (!accessToken || typeof accessToken !== 'string' || !accessToken.trim()) {
+      throw new Error('A valid accessToken is required to connect a calendar account');
+    }
+
+    const cleanToken = accessToken.trim();
+    if (isForbiddenToken(cleanToken)) {
+      throw new Error('Simulated or dummy tokens are not permitted in calendar account connections');
+    }
+
     const id = `cal_acc_${randomUUID()}`;
     const now = new Date().toISOString();
+    const tokenExpiresAt = expiresInSeconds
+      ? new Date(Date.now() + expiresInSeconds * 1000).toISOString()
+      : null;
 
-    // Encrypt sensitive access and refresh tokens at rest with AES-256-GCM
-    const encryptedAccessToken = accessToken ? encryptData(accessToken) : null;
-    const encryptedRefreshToken = refreshToken ? encryptData(refreshToken) : null;
+    // Encrypt sensitive access and refresh tokens at rest with authenticated AES-256-GCM
+    const encryptedAccessToken = encryptData(cleanToken);
+    const encryptedRefreshToken =
+      refreshToken && refreshToken.trim() ? encryptData(refreshToken.trim()) : null;
 
     this.db
       .prepare(`
         INSERT INTO external_calendar_accounts (
           id, user_id, provider, account_email, access_token, encrypted_refresh_token,
-          sync_status, last_synced_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'connected', ?, ?, ?)
+          token_expires_at, sync_status, last_synced_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'connected', ?, ?, ?)
         ON CONFLICT(user_id, provider, account_email) DO UPDATE SET
           access_token = excluded.access_token,
           encrypted_refresh_token = excluded.encrypted_refresh_token,
+          token_expires_at = excluded.token_expires_at,
           sync_status = 'connected',
           updated_at = excluded.updated_at
       `)
-      .run(id, userId, provider, accountEmail.toLowerCase(), encryptedAccessToken, encryptedRefreshToken, now, now, now);
+      .run(
+        id,
+        userId,
+        provider,
+        accountEmail.toLowerCase(),
+        encryptedAccessToken,
+        encryptedRefreshToken,
+        tokenExpiresAt,
+        now,
+        now,
+        now,
+      );
 
     return this.getAccount(userId, provider, accountEmail)!;
   }
@@ -116,14 +148,108 @@ export class CalendarSyncManager {
   }
 
   disconnectAccount(userId: string, provider: CalendarProviderType, accountEmail?: string): boolean {
-    let sql = 'DELETE FROM external_calendar_accounts WHERE user_id = ? AND provider = ?';
+    let sql = 'SELECT id, access_token FROM external_calendar_accounts WHERE user_id = ? AND provider = ?';
     const params: string[] = [userId, provider];
     if (accountEmail) {
       sql += ' AND account_email = ?';
       params.push(accountEmail.toLowerCase());
     }
-    const result = this.db.prepare(sql).run(...params);
+    const row = this.db.prepare(sql).get(...params) as any;
+    if (row && row.access_token) {
+      try {
+        const token = this.decryptAccessToken(row.access_token);
+        if (provider === 'google') {
+          // Attempt token revocation (best effort)
+          fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          }).catch(() => {});
+        }
+      } catch {
+        // Token decryption failed or already invalidated
+      }
+    }
+
+    let deleteSql = 'DELETE FROM external_calendar_accounts WHERE user_id = ? AND provider = ?';
+    const deleteParams: string[] = [userId, provider];
+    if (accountEmail) {
+      deleteSql += ' AND account_email = ?';
+      deleteParams.push(accountEmail.toLowerCase());
+    }
+    const result = this.db.prepare(deleteSql).run(...deleteParams);
     return result.changes > 0;
+  }
+
+  async refreshAccountToken(
+    accountId: string,
+    provider: CalendarProviderType,
+    encryptedRefreshToken: string,
+  ): Promise<string | null> {
+    let refreshToken: string;
+    try {
+      refreshToken = decryptData(encryptedRefreshToken);
+    } catch {
+      return null;
+    }
+
+    if (!refreshToken) return null;
+
+    let newAccessToken: string | null = null;
+    let expiresIn: number | undefined;
+
+    if (provider === 'google') {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      if (!clientId || !clientSecret) return null;
+
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        newAccessToken = data.access_token;
+        expiresIn = data.expires_in;
+      }
+    } else if (provider === 'outlook') {
+      const clientId = process.env.MICROSOFT_CLIENT_ID;
+      const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+      if (!clientId) return null;
+
+      const bodyParams: Record<string, string> = {
+        client_id: clientId,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      };
+      if (clientSecret) bodyParams.client_secret = clientSecret;
+
+      const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(bodyParams),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        newAccessToken = data.access_token;
+        expiresIn = data.expires_in;
+      }
+    }
+
+    if (newAccessToken) {
+      const encrypted = encryptData(newAccessToken);
+      const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+      this.db
+        .prepare('UPDATE external_calendar_accounts SET access_token = ?, token_expires_at = ?, updated_at = ? WHERE id = ?')
+        .run(encrypted, expiresAt, new Date().toISOString(), accountId);
+      return newAccessToken;
+    }
+    return null;
   }
 
   async syncEvents(
@@ -139,10 +265,30 @@ export class CalendarSyncManager {
     }
 
     const row = this.db
-      .prepare('SELECT access_token, sync_cursor FROM external_calendar_accounts WHERE id = ?')
+      .prepare('SELECT access_token, encrypted_refresh_token, token_expires_at, sync_cursor FROM external_calendar_accounts WHERE id = ?')
       .get(account.id) as any;
 
-    const accessToken = this.decryptAccessToken(row?.access_token);
+    let accessToken = this.decryptAccessToken(row?.access_token);
+
+    // If token is expired and refresh token is available, refresh it
+    if (
+      row?.token_expires_at &&
+      new Date(row.token_expires_at).getTime() < Date.now() &&
+      row?.encrypted_refresh_token
+    ) {
+      try {
+        const refreshed = await this.refreshAccountToken(account.id, providerType, row.encrypted_refresh_token);
+        if (refreshed) {
+          accessToken = refreshed;
+        }
+      } catch (refreshErr) {
+        this.db.prepare("UPDATE external_calendar_accounts SET sync_status = 'auth_expired' WHERE id = ?").run(account.id);
+        throw new Error(
+          `Calendar authorization expired and refresh failed for ${providerType}: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
+        );
+      }
+    }
+
     const provider = this.getProvider(providerType, accessToken);
     const { events, nextSyncToken } = await provider.fetchEvents(timeMin, timeMax, row?.sync_cursor);
 

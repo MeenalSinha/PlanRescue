@@ -42,3 +42,5 @@ jobs:
         run: npm run vr:test
       - name: Verify production build for spatial VR app
         run: npm run vr:build
+      - name: Verify zero mock tokens, dummy fallbacks, or secrets in production distribution
+        run: npm run audit:leaks

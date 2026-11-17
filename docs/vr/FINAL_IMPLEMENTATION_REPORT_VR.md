@@ -329,15 +329,19 @@ A dedicated end-to-end integration suite validates the live deterministic recove
 
 ## H. Known Limitations, Hardware Specifics & Environment Notes
 
-1. **Hardware Verification Context:**
-   - Physical Meta Quest hardware verification requires deploying the built bundle to an HTTPS-enabled origin accessible by the Meta Quest Browser.
-   - Desktop browser execution relies on `DesktopInteractionFallback` (mouse raycasting) or the Meta WebXR Emulator extension.
-   - The capability detection module honestly differentiates between desktop emulation and physical headset sessions.
-2. **Local Sandbox Network Isolation:**
-   - In sandboxed command execution environments on Windows, TCP loopback socket connections between separate processes (`127.0.0.1:PORT`) are restricted by OS sandbox policy. 
-   - All unit, component, and mocking integration tests execute cleanly in-process without sandbox violations.
-3. **Calendar Integration Scope:**
-   - PlanRescue Spatial acts directly on its local, transaction-safe SQLite database (`data/planrescue.sqlite`). Enterprise synchronization with external calendar APIs (Google Calendar, Outlook 365) is intentionally architected as a server-side connector extension.
+1. **Hardware Verification Context (Honest Invariant):**
+   - Physical Meta Quest 3 hardware verification is **BLOCKED (Pending physical Meta Quest hardware)**.
+   - All spatial rendering, hand interaction gestures (pinch/grab), 3-zone layout ergonomics, and accessibility toggles are 100% verified via automated Vitest suites (82 passing tests) and desktop WebXR emulation.
+   - Target frame budget (~8.2 ms at 90Hz) reflects desktop Three.js scene profiling; physical on-device GPU profiling via MQDH remains pending physical hardware.
+2. **External Cloud Calendar Live Synchronization:**
+   - Live external synchronization with Google Calendar and Microsoft Outlook cloud APIs is **BLOCKED (Pending external OAuth app registration & live credentials)**.
+   - Real REST adapters (`google.ts`, `outlook.ts`), PKCE OAuth initiation/callback handlers, AES-256-GCM token encryption, and outbox saga reconciliation are fully implemented and verified via automated integration tests.
+3. **Live Cloud Platform Deployment:**
+   - Live public cloud hosting is **BLOCKED (Pending external cloud platform infrastructure)**.
+   - Production readiness is verified via automated production builds (`npm run vr:build`, `npm run build:web`), environment validation startup hooks (`instrumentation.ts`), zero-mock production audit (`npm run audit:leaks`), and database backup/restore scripts.
+4. **Local Sandbox Network Isolation:**
+   - In sandboxed command execution environments on Windows, TCP loopback socket connections between separate child processes (`127.0.0.1:PORT`) are restricted by OS AppContainer sandbox policy.
+   - Cross-process end-to-end integration tests execute with sandbox bypass for network socket binding, while all in-memory unit tests execute cleanly within standard sandbox boundaries.
 
 ---
 

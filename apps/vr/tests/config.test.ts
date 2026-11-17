@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseConfigFromEnv, validateConfig } from '../src/config/loader';
+import { mergeConfigSources, parseConfigFromEnv, validateConfig } from '../src/config/loader';
 import { ConfigurationError } from '../src/config/schema';
 
 describe('VR Configuration System', () => {
-  it('validates a correct configuration with defaults', () => {
+  it('validates a correct configuration with defaults (emulation defaults to false for production safety)', () => {
     const valid = {
       apiBaseUrl: 'http://127.0.0.1:3000',
     };
@@ -13,7 +13,7 @@ describe('VR Configuration System', () => {
     expect(config.logLevel).toBe('info');
     expect(config.requestTimeoutMs).toBe(15000);
     expect(config.xr.enableHandTracking).toBe(true);
-    expect(config.xr.enableEmulation).toBe(true);
+    expect(config.xr.enableEmulation).toBe(false);
   });
 
   it('rejects loopback/localhost apiBaseUrl in production', () => {
@@ -38,6 +38,18 @@ describe('VR Configuration System', () => {
     });
     expect(prodConfig.appEnv).toBe('production');
     expect(prodConfig.apiBaseUrl).toBe('https://spatial.planrescue.app');
+  });
+
+  it('rejects XR emulation in production environment', () => {
+    expect(() =>
+      validateConfig({
+        apiBaseUrl: 'https://spatial.planrescue.app',
+        appEnv: 'production',
+        xr: {
+          enableEmulation: true,
+        },
+      }),
+    ).toThrow(ConfigurationError);
   });
 
   it('rejects missing apiBaseUrl', () => {
@@ -104,27 +116,33 @@ describe('VR Configuration System', () => {
     expect(config.xr.enableEmulation).toBe(true);
   });
 
-  it('rejects loopback/localhost apiBaseUrl in production', () => {
-    expect(() =>
-      validateConfig({
-        apiBaseUrl: 'http://127.0.0.1:3000',
-        appEnv: 'production',
-      }),
-    ).toThrow(ConfigurationError);
+  it('strictly respects configuration precedence: window > env > static file', () => {
+    const fileSource = {
+      appEnv: 'development',
+      apiBaseUrl: 'http://127.0.0.1:3000',
+      logLevel: 'info',
+      xr: { enableEmulation: true },
+    };
 
-    expect(() =>
-      validateConfig({
-        apiBaseUrl: 'http://localhost:3000',
-        appEnv: 'production',
-      }),
-    ).toThrow(ConfigurationError);
+    const envSource = {
+      appEnv: 'staging',
+      apiBaseUrl: 'https://staging.api.planrescue.app',
+      xr: { enableEmulation: false },
+    };
 
-    // Valid production URL succeeds
-    const prodConfig = validateConfig({
-      apiBaseUrl: 'https://spatial.planrescue.app',
-      appEnv: 'production',
-    });
-    expect(prodConfig.appEnv).toBe('production');
-    expect(prodConfig.apiBaseUrl).toBe('https://spatial.planrescue.app');
+    const windowSource = {
+      apiBaseUrl: 'https://window-override.api.planrescue.app',
+    };
+
+    // Env overrides file
+    const mergedEnv = mergeConfigSources(fileSource, envSource);
+    expect(mergedEnv.appEnv).toBe('staging');
+    expect(mergedEnv.apiBaseUrl).toBe('https://staging.api.planrescue.app');
+    expect((mergedEnv.xr as Record<string, unknown>).enableEmulation).toBe(false);
+
+    // Window overrides both
+    const mergedWindow = mergeConfigSources(fileSource, envSource, windowSource);
+    expect(mergedWindow.apiBaseUrl).toBe('https://window-override.api.planrescue.app');
+    expect(mergedWindow.appEnv).toBe('staging');
   });
 });

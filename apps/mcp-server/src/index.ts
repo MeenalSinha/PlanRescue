@@ -22,11 +22,11 @@ async function main(): Promise<void> {
 
   const logger = createLogger(config.logLevel);
 
-  // Open, migrate and seed SQLite before anything listens. A failure here is fatal: the
-  // server never falls back to in-memory data.
+  // Open and migrate SQLite before anything listens. Seeding is conditionally applied
+  // according to configuration and is strictly disabled in production.
   let database: InitializedDatabase;
   try {
-    database = initializeDatabase(config.databasePath, logger);
+    database = initializeDatabase(config.databasePath, logger, { seed: config.seedSampleData });
   } catch (error) {
     logger.error(`Failed to initialize the database: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

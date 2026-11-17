@@ -43,7 +43,10 @@ export type ApiErrorCode =
   | 'misconfigured'
   | 'internal_error'
   | 'network_error'
-  | 'bad_response';
+  | 'bad_response'
+  | 'oauth_exchange_failed'
+  | 'token_exchange_failed'
+  | 'provider_error';
 
 export interface ApiError {
   code: ApiErrorCode;

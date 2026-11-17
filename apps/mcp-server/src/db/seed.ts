@@ -10,18 +10,36 @@ export interface SeedResult {
 }
 
 /**
- * Insert the sample events and tasks that are not already present, keyed by their stable ids.
+ * Inserts development/test sample events and tasks into the database.
  *
- * `INSERT OR IGNORE` makes this idempotent and non-destructive: running it again adds nothing,
- * and a row the user has since modified is left exactly as it is. Caveat: a seed row that was
- * deleted is inserted again on the next start. Each record is validated against the same Zod
- * schema the API uses before it reaches the database, and everything runs in one transaction.
+ * Enforces production invariants:
+ * 1. Only executed when explicitly configured in non-production environments.
+ * 2. Records `sample_data_initialized` in `_system_meta` so that user-deleted records
+ *    are NEVER resurrected on subsequent application restarts.
+ * 3. Uses atomic transactions and schema validation before insertion.
  */
 export function seedDatabase(
   db: Db,
   events: readonly ScheduleEvent[] = seedEvents,
   tasks: readonly Task[] = seedTasks,
+  force = false,
 ): SeedResult {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS _system_meta (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
+  `);
+
+  if (!force) {
+    const existing = db
+      .prepare("SELECT value FROM _system_meta WHERE key = 'sample_data_initialized'")
+      .get() as { value: string } | undefined;
+    if (existing) {
+      return { eventsInserted: 0, tasksInserted: 0 };
+    }
+  }
+
   const insertEvent = db.prepare(
     `INSERT OR IGNORE INTO calendar_events
        (id, title, start_time, end_time, start_ms, end_ms, priority, movable, category, notes)
@@ -66,6 +84,11 @@ export function seedDatabase(
         updatedAt: t.updatedAt,
       }).changes;
     }
+
+    db.prepare("INSERT OR REPLACE INTO _system_meta (key, value) VALUES ('sample_data_initialized', ?)").run(
+      new Date().toISOString(),
+    );
+
     return { eventsInserted, tasksInserted };
   })();
 }

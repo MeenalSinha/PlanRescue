@@ -9,7 +9,7 @@ export type LogLevel = z.infer<typeof logLevelSchema>;
 export const xrConfigSchema = z.object({
   sessionMode: z.enum(['immersive-vr', 'inline']).default('immersive-vr'),
   enableHandTracking: z.boolean().default(true),
-  enableEmulation: z.boolean().default(true),
+  enableEmulation: z.boolean().default(false),
 });
 export type XrConfig = z.infer<typeof xrConfigSchema>;
 
@@ -32,7 +32,7 @@ export const vrConfigSchema = z.object({
   xr: xrConfigSchema.default({
     sessionMode: 'immersive-vr',
     enableHandTracking: true,
-    enableEmulation: true,
+    enableEmulation: false,
   }),
 }).refine(
   (data) => {
@@ -52,6 +52,17 @@ export const vrConfigSchema = z.object({
   {
     message: 'Production environment cannot use localhost or loopback address for apiBaseUrl',
     path: ['apiBaseUrl'],
+  },
+).refine(
+  (data) => {
+    if (data.appEnv === 'production' && data.xr.enableEmulation) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: 'Production environment cannot have XR emulation enabled',
+    path: ['xr', 'enableEmulation'],
   },
 );
 

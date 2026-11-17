@@ -175,7 +175,7 @@ describe('Spatial Phase 10: External Calendar Integrations', () => {
 
       const userId = 'usr_test_sync';
       insertTestUser(userId);
-      syncManager.connectAccount(userId, 'google', 'user@company.com');
+      syncManager.connectAccount(userId, 'google', 'user@company.com', 'tok_google_access_credential_123');
 
       const accounts = syncManager.listAccounts(userId);
       expect(accounts.length).toBe(1);
@@ -211,7 +211,7 @@ describe('Spatial Phase 10: External Calendar Integrations', () => {
       const syncManager = new CalendarSyncManager(db, () => fakeGoogleProvider as any);
       const userId = 'usr_outbox_test';
       insertTestUser(userId);
-      syncManager.connectAccount(userId, 'google', 'user@company.com');
+      syncManager.connectAccount(userId, 'google', 'user@company.com', 'tok_google_access_credential_123');
 
       // Queue an event shift from an approved plan
       const outboxId = syncManager.queueOutboxChange(userId, 'plan-xyz', 'google', {
@@ -251,7 +251,7 @@ describe('Spatial Phase 10: External Calendar Integrations', () => {
       const syncManager = new CalendarSyncManager(db, () => fakeGoogleProvider as any);
       const userId = 'usr_fail_test';
       insertTestUser(userId);
-      syncManager.connectAccount(userId, 'google', 'user@company.com');
+      syncManager.connectAccount(userId, 'google', 'user@company.com', 'tok_google_access_credential_123');
 
       syncManager.queueOutboxChange(userId, 'plan-failed', 'google', {
         eventId: 'g_e2',
@@ -270,13 +270,46 @@ describe('Spatial Phase 10: External Calendar Integrations', () => {
       const syncManager = new CalendarSyncManager(db);
       const userId = 'usr_disco_test';
       insertTestUser(userId);
-      syncManager.connectAccount(userId, 'google', 'user@company.com');
+      syncManager.connectAccount(userId, 'google', 'user@company.com', 'tok_google_access_credential_123');
 
       expect(syncManager.listAccounts(userId).length).toBe(1);
 
       const disco = syncManager.disconnectAccount(userId, 'google');
       expect(disco).toBe(true);
       expect(syncManager.listAccounts(userId).length).toBe(0);
+    });
+
+    it('rejects simulated, dummy, or empty tokens on account connection', () => {
+      const syncManager = new CalendarSyncManager(db);
+      const userId = 'usr_token_val';
+      insertTestUser(userId);
+
+      expect(() => syncManager.connectAccount(userId, 'google', 'test@test.com', '')).toThrow(
+        'A valid accessToken is required',
+      );
+      expect(() => syncManager.connectAccount(userId, 'google', 'test@test.com', 'mock-access-token')).toThrow(
+        'Simulated or dummy tokens are not permitted',
+      );
+      expect(() =>
+        syncManager.connectAccount(userId, 'google', 'test@test.com', 'token_simulated_oauth_2026'),
+      ).toThrow('Simulated or dummy tokens are not permitted');
+      expect(() => syncManager.connectAccount(userId, 'google', 'test@test.com', 'dummy-token')).toThrow(
+        'Simulated or dummy tokens are not permitted',
+      );
+    });
+
+    it('fails closed when decrypting corrupted calendar tokens', async () => {
+      const syncManager = new CalendarSyncManager(db);
+      const userId = 'usr_corrupt_test';
+      insertTestUser(userId);
+      syncManager.connectAccount(userId, 'google', 'user@company.com', 'valid-initial-token-12345');
+
+      // Tamper with access token in the database
+      db.prepare("UPDATE external_calendar_accounts SET access_token = 'corrupted.token.payload' WHERE user_id = ?").run(userId);
+
+      await expect(
+        syncManager.syncEvents(userId, 'google', '2026-10-22T00:00:00Z', '2026-10-23T00:00:00Z'),
+      ).rejects.toThrow('Failed to decrypt calendar credentials');
     });
   });
 });

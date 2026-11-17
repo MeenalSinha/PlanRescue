@@ -22,6 +22,9 @@ const STATUS: Record<ApiErrorCode, number> = {
   internal_error: 500,
   network_error: 503,
   bad_response: 502,
+  oauth_exchange_failed: 400,
+  token_exchange_failed: 400,
+  provider_error: 502,
 };
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
@@ -33,7 +36,7 @@ export function ok<T>(data: T, activity: ToolActivity[] = []): NextResponse {
 
 export function fail(code: ApiErrorCode, message: string, activity: ToolActivity[] = [], fields?: Record<string, string>): NextResponse {
   const body: ApiResponse<never> = { ok: false, error: { code, message, ...(fields ? { fields } : {}) }, activity };
-  return NextResponse.json(body, { status: STATUS[code], headers: NO_STORE });
+  return NextResponse.json(body, { status: STATUS[code] ?? 400, headers: NO_STORE });
 }
 
 /** Turn any thrown value into a safe response. Details go to the server log, never to the browser. */

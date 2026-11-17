@@ -1,6 +1,6 @@
 import type { DashboardData, ToolActivity } from '@/lib/api';
 import { conflictAnalysisSchema, scheduleOutputSchema, tasksOutputSchema } from '@/lib/contract';
-import { DEFAULT_DATE, DEFAULT_PLANNING_END, DEFAULT_PLANNING_START, TASK_LOOKAHEAD_DAYS } from '@/lib/constants';
+import { getDefaultDate, DEFAULT_PLANNING_END, DEFAULT_PLANNING_START, TASK_LOOKAHEAD_DAYS } from '@/lib/constants';
 import { loadServerConfig } from '@/lib/env';
 import { McpCallError, callMcpTool } from '@/lib/mcpClient';
 import { dashboardQuerySchema, fieldErrors } from '@/lib/requests';
@@ -17,15 +17,17 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const query = dashboardQuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!query.success) return fail('invalid_request', 'The date is not valid.', [], fieldErrors(query.error));
-  const date = query.data.date ?? DEFAULT_DATE;
+
+  const config = loadServerConfig();
+  const authService = getAuthService();
+  const authContext = authService.authenticateRequest(request, { required: false });
+  const effectiveZone = authContext.preferences.timezone || config.calendarTimeZone;
+
+  const date = query.data.date ?? getDefaultDate(effectiveZone);
   if (!isValidDate(date)) return fail('invalid_request', 'The date is not a real calendar date.', [], { date: 'Choose a real calendar date' });
 
   const activity: ToolActivity[] = [];
   try {
-    const config = loadServerConfig();
-    const authService = getAuthService();
-    const authContext = authService.authenticateRequest(request, { required: false });
-    const effectiveZone = authContext.preferences.timezone || config.calendarTimeZone;
 
     const window = dayWindow(date, effectiveZone);
     const taskWindow = { startTime: window.startTime, endTime: dayWindow(addDays(date, TASK_LOOKAHEAD_DAYS), effectiveZone).startTime };
