@@ -1,11 +1,23 @@
 /**
  * Next.js Server Startup Instrumentation Hook (Spatial Phase 14)
  *
- * Runs once when the Node.js server starts up. Strictly validates production
+ * Runs when the Node.js server starts up. Strictly validates production
  * configuration, secrets entropy, and required service endpoints before traffic arrives.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // During next build (phase-production-build), skip hard-failing on missing runtime deployment secrets.
+    // Build artifacts (static bundles, images, CI compiles) do not contain runtime secrets.
+    // Secrets are strictly enforced when the production server boots (next start) before accepting traffic.
+    const isBuildPhase =
+      process.env.NEXT_PHASE === 'phase-production-build' ||
+      process.env.npm_lifecycle_event === 'build' ||
+      process.env.npm_lifecycle_event === 'build:web';
+
+    if (isBuildPhase) {
+      return;
+    }
+
     const { validateEnvironment } = await import('@/lib/envValidation');
     const result = validateEnvironment();
     if (!result.isValid) {
