@@ -76,6 +76,7 @@ function auditFiles(): Violation[] {
 
     for (let i = 0; i < lines.length; i++) {
       const lineText = lines[i];
+      if (lineText === undefined) continue;
       // Skip lines that are specifically guarding, rejecting, or regex-testing against forbidden patterns
       if (
         lineText.includes('FORBIDDEN_TOKEN') ||
