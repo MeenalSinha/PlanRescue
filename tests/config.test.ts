@@ -13,7 +13,7 @@ describe('parseConfig', () => {
       logLevel: 'info',
       allowedHosts: [],
       databasePath: resolve('/work', 'data/planrescue.sqlite'),
-      seedSampleData: false,
+      seedSampleData: true,
     });
   });
 

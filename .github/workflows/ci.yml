@@ -12,6 +12,9 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24]
+    env:
+      ENCRYPTION_SECRET: 'ci-pipeline-test-encryption-secret-32-chars-long!'
+      SESSION_SECRET: 'ci-pipeline-test-session-secret-32-chars-long!'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

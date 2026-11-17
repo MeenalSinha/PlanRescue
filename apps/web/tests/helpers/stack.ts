@@ -66,7 +66,17 @@ async function startMcp(): Promise<McpHandle> {
   const port = await freePort();
   let output = '';
   const child = spawn(process.execPath, [MCP_ENTRY], {
-    env: { ...process.env, MCP_HOST: '127.0.0.1', MCP_PORT: String(port), MCP_PATH: '/mcp', APP_ENV: 'test', LOG_LEVEL: 'info', MCP_ALLOWED_HOSTS: '', DATABASE_PATH: databasePath },
+    env: {
+      ...process.env,
+      MCP_HOST: '127.0.0.1',
+      MCP_PORT: String(port),
+      MCP_PATH: '/mcp',
+      APP_ENV: 'test',
+      LOG_LEVEL: 'info',
+      MCP_ALLOWED_HOSTS: '',
+      DATABASE_PATH: databasePath,
+      SEED_SAMPLE_DATA: 'true',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout?.on('data', (c: Buffer) => (output += c.toString()));
@@ -106,7 +116,15 @@ export async function startStack(env: Record<string, string> = {}): Promise<Stac
   let output = '';
   const web: ChildProcess = spawn(process.execPath, [NEXT_BIN, 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
     cwd: WEB_DIR,
-    env: { ...process.env, PLANRESCUE_MCP_URL: mcp.url, PLANRESCUE_MCP_TIMEOUT_MS: '5000', NODE_ENV: 'production', ...env },
+    env: {
+      ...process.env,
+      PLANRESCUE_MCP_URL: mcp.url,
+      PLANRESCUE_MCP_TIMEOUT_MS: '5000',
+      NODE_ENV: 'production',
+      ENCRYPTION_SECRET: 'test-stack-e2e-encryption-secret-32-chars-long!',
+      SESSION_SECRET: 'test-stack-e2e-session-secret-32-chars-long!',
+      ...env,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   web.stdout?.on('data', (c: Buffer) => (output += c.toString()));

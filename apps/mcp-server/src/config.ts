@@ -13,7 +13,7 @@ const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   MCP_ALLOWED_HOSTS: z.string().default(''),
-  SEED_SAMPLE_DATA: z.enum(['true', 'false']).default('false'),
+  SEED_SAMPLE_DATA: z.enum(['true', 'false']).optional(),
   DATABASE_PATH: z
     .string()
     .trim()
@@ -69,7 +69,12 @@ export function parseConfig(env: Record<string, string | undefined>, baseDir: st
       .map((h) => h.trim())
       .filter(Boolean),
     databasePath: resolve(baseDir, v.DATABASE_PATH),
-    seedSampleData: v.APP_ENV === 'production' ? false : v.SEED_SAMPLE_DATA === 'true',
+    seedSampleData:
+      v.APP_ENV === 'production'
+        ? false
+        : v.SEED_SAMPLE_DATA !== undefined
+          ? v.SEED_SAMPLE_DATA === 'true'
+          : true,
   };
 }
 
