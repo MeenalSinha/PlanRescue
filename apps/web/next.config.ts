@@ -8,6 +8,10 @@ const config: NextConfig = {
   poweredByHeader: false,
   // The MCP client is a Node-only package used from route handlers; keep it out of the bundle.
   serverExternalPackages: ['@modelcontextprotocol/client'],
+  experimental: {
+    // Disable automatic agent upgrade prompts during CI builds
+    agentUpgrade: false,
+  },
   // Defence in depth for the browser: no framing, no sniffing, no referrer leakage, WebXR permissions.
   async headers() {
     return [

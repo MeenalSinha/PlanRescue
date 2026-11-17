@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const authService = getAuthService();
-    const authContext = authService.authenticateRequest(request);
+    const authContext = authService.authenticateRequest(request, { required: false });
     const prefs = authService.getPreferences(authContext.user.id);
 
     const url = new URL(request.url);

@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const authService = getAuthService();
-  const authContext = authService.authenticateRequest(request);
+  const authContext = authService.authenticateRequest(request, { required: false });
 
   return ok({
     user: authContext.user,

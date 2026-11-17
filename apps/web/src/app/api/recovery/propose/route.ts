@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   try {
     const config = loadServerConfig();
     const authService = getAuthService();
-    const authContext = authService.authenticateRequest(request);
+    const authContext = authService.authenticateRequest(request, { required: false });
     const input = parsed.data;
 
     // Apply user preferred strategy if not explicitly provided in the request

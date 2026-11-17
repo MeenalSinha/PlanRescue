@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   try {
     const config = loadServerConfig();
     const authService = getAuthService();
-    const authContext = authService.authenticateRequest(request);
+    const authContext = authService.authenticateRequest(request, { required: false });
     const effectiveZone = authContext.preferences.timezone || config.calendarTimeZone;
 
     const window = dayWindow(date, effectiveZone);

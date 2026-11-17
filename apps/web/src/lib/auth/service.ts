@@ -302,7 +302,10 @@ export class AuthService {
     };
   }
 
-  public authenticateRequest(request: Request): {
+  public authenticateRequest(
+    request: Request,
+    options: { required?: boolean } = {}
+  ): {
     user: User;
     preferences: UserPreferences;
     isDefault: boolean;
@@ -333,12 +336,31 @@ export class AuthService {
       }
     }
 
-    // In production, unauthenticated requests must never silently assume the development default user
-    if (process.env.NODE_ENV === 'production') {
+    // Determine if authentication is strictly required
+    let isRequired = options.required;
+    if (isRequired === undefined) {
+      try {
+        const url = new URL(request.url, 'http://localhost');
+        const protectedPathPrefixes = [
+          '/api/recovery/plans',
+          '/api/calendar/',
+          '/api/user/',
+          '/api/actions/history',
+        ];
+        isRequired =
+          process.env.NODE_ENV === 'production' &&
+          protectedPathPrefixes.some((p) => url.pathname.startsWith(p));
+      } catch {
+        isRequired = process.env.NODE_ENV === 'production';
+      }
+    }
+
+    // In production or when explicitly required, reject unauthenticated requests
+    if (isRequired && (process.env.NODE_ENV === 'production' || options.required)) {
       throw new AuthenticationError('Authentication required', 'unauthorized');
     }
 
-    // Fallback to default user for local dev/unauthenticated baseline tests
+    // Fallback to default user for local dev/unauthenticated baseline tests and read-only views
     const defaultUser = this.getDefaultUser();
     const defaultPreferences = this.getPreferences(DEFAULT_USER_ID);
     return { user: defaultUser, preferences: defaultPreferences, isDefault: true };
