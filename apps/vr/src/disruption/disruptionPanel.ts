@@ -21,13 +21,13 @@ export class SpatialDisruptionPanel extends SpatialPanel {
   private onSubmit?: DisruptionSubmitCallback;
   private onCancel?: () => void;
 
-  constructor(width = 0.65, height = 0.75) {
+  constructor(width = 0.7, height = 0.52) {
     super('Report Disruption', width, height, {
       accentColor: SPATIAL_PALETTE.priorityHigh,
     });
 
     this.summaryGroup = new THREE.Group();
-    this.summaryGroup.position.set(0, 0.1, 0.015);
+    this.summaryGroup.position.set(0, 0.08, 0.015);
     this.group.add(this.summaryGroup);
 
     this.buildControls();
@@ -59,7 +59,7 @@ export class SpatialDisruptionPanel extends SpatialPanel {
     const presets = [15, 30, 45, 60];
     const startX = -0.21;
     const gapX = 0.14;
-    const posY = -0.12;
+    const posY = -0.07;
 
     presets.forEach((mins, i) => {
       const btn = new SpatialButton(`+${mins}m`, 0.12, 0.045, {
@@ -74,10 +74,10 @@ export class SpatialDisruptionPanel extends SpatialPanel {
     });
 
     // Action button: "Analyze Impact"
-    const submitBtn = new SpatialButton('Analyze Impact', 0.28, 0.055, {
+    const submitBtn = new SpatialButton('Analyze Impact', 0.28, 0.052, {
       accentColor: SPATIAL_PALETTE.priorityHigh,
     });
-    submitBtn.setPosition(0, -0.23, 0.02);
+    submitBtn.setPosition(0, -0.17, 0.02);
     submitBtn.onClick(() => {
       if (this.selectedEvent) {
         const disruption: Disruption = {
@@ -122,7 +122,7 @@ export class SpatialDisruptionPanel extends SpatialPanel {
         new THREE.PlaneGeometry(0.55, 0.55 / aspect),
         new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
       );
-      mesh.position.set(0, 0.05, 0);
+      mesh.position.set(0, 0.04, 0);
       this.summaryGroup.add(mesh);
       return;
     }
@@ -142,7 +142,7 @@ export class SpatialDisruptionPanel extends SpatialPanel {
       new THREE.PlaneGeometry(0.55, 0.55 / tAspect),
       new THREE.MeshBasicMaterial({ map: tTex, transparent: true }),
     );
-    tMesh.position.set(0, 0.08, 0);
+    tMesh.position.set(0, 0.06, 0);
     this.summaryGroup.add(tMesh);
 
     // Overrun detail text
@@ -161,7 +161,7 @@ export class SpatialDisruptionPanel extends SpatialPanel {
       new THREE.PlaneGeometry(0.55, 0.55 / dAspect),
       new THREE.MeshBasicMaterial({ map: dTex, transparent: true }),
     );
-    dMesh.position.set(0, -0.01, 0);
+    dMesh.position.set(0, -0.02, 0);
     this.summaryGroup.add(dMesh);
   }
 

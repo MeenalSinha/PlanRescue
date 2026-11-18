@@ -71,7 +71,7 @@ export class SpatialHistoryItemCard extends SpatialUIElement {
 export class SpatialActionHistoryPanel extends SpatialPanel {
   private readonly items: SpatialHistoryItemCard[] = [];
 
-  constructor(width = 0.85, height = 0.65) {
+  constructor(width = 0.7, height = 0.45) {
     super('Action History & Audit Trail', width, height, {
       accentColor: SPATIAL_PALETTE.primary,
     });
@@ -80,13 +80,13 @@ export class SpatialActionHistoryPanel extends SpatialPanel {
   setHistoryEntries(entries: ActionHistoryItem[]): void {
     this.clearHistory();
 
-    const startY = 0.16;
-    const gap = 0.095;
-    const maxEntries = 5;
+    const startY = 0.08;
+    const gap = 0.085;
+    const maxEntries = 3;
 
     const displayEntries = entries.slice(0, maxEntries);
     displayEntries.forEach((entry, i) => {
-      const card = new SpatialHistoryItemCard(entry, 0.75, 0.08);
+      const card = new SpatialHistoryItemCard(entry, 0.6, 0.07);
       card.setPosition(0, startY - i * gap, 0.015);
       this.group.add(card.group);
       this.items.push(card);

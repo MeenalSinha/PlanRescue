@@ -120,6 +120,17 @@ describe('SpatialAppController (Runtime Application Orchestration)', () => {
     expect(world.scene.children).toContain(controller.assistantPanel.group);
     expect(world.scene.children).toContain(controller.accountPanel.group);
 
+    // Verify initial panel visibility prevents any 3D overlap or z-fighting
+    expect(controller.timeline.group.visible).toBe(true);
+    expect(controller.taskPanel.group.visible).toBe(true);
+    expect(controller.disruptionPanel.group.visible).toBe(true);
+    expect(controller.conflictVisualizer.group.visible).toBe(false);
+    expect(controller.assistantPanel.group.visible).toBe(true);
+    expect(controller.approvalWorkflow.group.visible).toBe(false);
+    expect(controller.actionHistoryPanel.group.visible).toBe(true);
+    expect(controller.validationExplorer.group.visible).toBe(false);
+    expect(controller.comparisonWorkspace.group.visible).toBe(false);
+
     controller.dispose();
     world.dispose();
   });

@@ -23,6 +23,27 @@ export class SpatialAssistantPanel extends SpatialPanel {
     this.showIdleState();
   }
 
+  showStatusNotice(message: string): void {
+    this.clearContent();
+
+    const { texture, aspect } = createTextTexture(message, {
+      fontSize: 15,
+      fontWeight: '500',
+      color: SPATIAL_PALETTE.textSecondary,
+      width: 512,
+      height: 96,
+      textAlign: 'left',
+      padding: 12,
+    });
+
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.55, 0.55 / aspect),
+      new THREE.MeshBasicMaterial({ map: texture, transparent: true }),
+    );
+    mesh.position.set(0, 0.08, 0);
+    this.contentGroup.add(mesh);
+  }
+
   showIdleState(): void {
     this.clearContent();
 

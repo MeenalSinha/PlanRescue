@@ -101,12 +101,13 @@ export class SpatialAppController {
     this.world.scene.add(this.comparisonWorkspace.group);
 
     // 3. Left Wing (Disruption & Conflicts) - angled at -35 deg
-    this.disruptionPanel = new SpatialDisruptionPanel();
-    this.disruptionPanel.setPosition(-1.15, 1.30, -1.0).setRotationY(35);
+    this.disruptionPanel = new SpatialDisruptionPanel(0.7, 0.52);
+    this.disruptionPanel.setPosition(-1.15, 1.35, -1.0).setRotationY(35);
     this.world.scene.add(this.disruptionPanel.group);
 
     this.conflictVisualizer = new SpatialConflictVisualizer(0.7, 0.45);
     this.conflictVisualizer.setPosition(-1.15, 0.85, -1.0).setRotationY(35);
+    this.conflictVisualizer.group.visible = false;
     this.world.scene.add(this.conflictVisualizer.group);
 
     // Phase 11: Productivity & Health Intelligence Panel - lower left tier
@@ -121,6 +122,7 @@ export class SpatialAppController {
 
     this.validationExplorer = new SpatialValidationExplorer(0.7, 0.45);
     this.validationExplorer.setPosition(1.15, 0.85, -1.0).setRotationY(-35);
+    this.validationExplorer.group.visible = false;
     this.world.scene.add(this.validationExplorer.group);
 
     this.approvalWorkflow = new SpatialApprovalWorkflow(this.api, 0.7, 0.52);
@@ -136,6 +138,10 @@ export class SpatialAppController {
     this.accountPanel = new SpatialAccountPanel(0.7, 0.45);
     this.accountPanel.setPosition(1.15, 0.35, -1.0).setRotationY(-35);
     this.world.scene.add(this.accountPanel.group);
+
+    // Initialize empty baseline state on panels before network load
+    this.taskPanel.setTasks([]);
+    this.actionHistoryPanel.setHistoryEntries([]);
 
     // 5. Connect Render Loop
     this.setupRenderLoop();
@@ -279,6 +285,7 @@ export class SpatialAppController {
 
   private clearScenarioResults(): void {
     this.conflictVisualizer.clearConflicts();
+    this.conflictVisualizer.group.visible = false;
     this.comparisonWorkspace.group.visible = false;
     this.timeline.group.visible = true;
     this.approvalWorkflow.group.visible = false;
@@ -321,7 +328,10 @@ export class SpatialAppController {
 
       logger.info('SpatialAppController', `Loaded ${dashboard.events.length} events, ${dashboard.tasks.length} tasks, and ${history.entries.length} history records`);
     } catch (err) {
-      logger.error('SpatialAppController', `Failed to load initial data from API: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn('SpatialAppController', `Failed to load initial data from API: ${err instanceof Error ? err.message : String(err)}`);
+      this.assistantPanel.showStatusNotice(
+        'WebXR Studio Ready\nConnect to local or remote PlanRescue server for live schedule synchronization.',
+      );
     }
   }
 
