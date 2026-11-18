@@ -44,11 +44,11 @@ jobs:
       - name: Build Next.js web application
         run: npm run build:web
       - name: Run web unit tests
-        run: npm run test:unit --prefix apps/web
+        run: npm run test:unit --prefix apps/web -- --reporter=verbose
       - name: Run web integration tests
-        run: npm run test:integration --prefix apps/web
+        run: npm run test:integration --prefix apps/web -- --reporter=verbose
       - name: Run web e2e tests
-        run: npm run test:e2e --prefix apps/web
+        run: npm run test:e2e --prefix apps/web -- --reporter=verbose
       - name: Install the spatial VR application
         run: npm --prefix apps/vr install --legacy-peer-deps --ignore-scripts
       - run: npm run vr:typecheck
