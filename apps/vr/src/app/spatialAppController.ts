@@ -87,56 +87,56 @@ export class SpatialAppController {
     this.recoveryManager = new SpatialRecoveryManager(this.api);
 
     // 2. Center Stage (Timeline, Tasks, Comparison)
-    this.timeline = new SpatialTimeline(this.interactionManager, { trackWidth: 1.15 });
-    this.timeline.setPosition(0, 1.32, -1.35);
+    this.timeline = new SpatialTimeline(this.interactionManager, { trackWidth: 1.10 });
+    this.timeline.setPosition(0, 1.30, -1.40);
     this.world.scene.add(this.timeline.group);
 
-    this.taskPanel = new SpatialTaskPanel(0.72, 0.42);
-    this.taskPanel.setPosition(0, 0.85, -1.35);
+    this.taskPanel = new SpatialTaskPanel(0.70, 0.40);
+    this.taskPanel.setPosition(0, 0.82, -1.40);
     this.world.scene.add(this.taskPanel.group);
 
     this.comparisonWorkspace = new SpatialComparisonWorkspace(this.interactionManager, 1.25, 0.65);
-    this.comparisonWorkspace.setPosition(0, 1.25, -1.35);
+    this.comparisonWorkspace.setPosition(0, 1.25, -1.40);
     this.comparisonWorkspace.group.visible = false;
     this.world.scene.add(this.comparisonWorkspace.group);
 
-    // 3. Left Wing (Disruption & Conflicts) - curved inward at 26 deg
-    this.disruptionPanel = new SpatialDisruptionPanel(0.68, 0.50);
-    this.disruptionPanel.setPosition(-0.85, 1.32, -1.22).setRotationY(26);
+    // 3. Left Wing (Disruption & Conflicts) - curved inward at 24 deg
+    this.disruptionPanel = new SpatialDisruptionPanel(0.65, 0.48);
+    this.disruptionPanel.setPosition(-0.82, 1.30, -1.28).setRotationY(24);
     this.world.scene.add(this.disruptionPanel.group);
 
-    this.conflictVisualizer = new SpatialConflictVisualizer(0.68, 0.42);
-    this.conflictVisualizer.setPosition(-0.85, 0.85, -1.22).setRotationY(26);
+    this.conflictVisualizer = new SpatialConflictVisualizer(0.65, 0.40);
+    this.conflictVisualizer.setPosition(-0.82, 0.82, -1.28).setRotationY(24);
     this.conflictVisualizer.group.visible = false;
     this.world.scene.add(this.conflictVisualizer.group);
 
-    // Phase 11: Productivity & Health Intelligence Panel - lower left tier
-    this.productivityPanel = new SpatialProductivityPanel(0.68, 0.42);
-    this.productivityPanel.setPosition(-0.85, 0.38, -1.22).setRotationY(26);
+    // Phase 11: Productivity & Health Intelligence Panel - lower left tier (raised)
+    this.productivityPanel = new SpatialProductivityPanel(0.65, 0.40);
+    this.productivityPanel.setPosition(-0.82, 0.48, -1.28).setRotationY(24);
     this.world.scene.add(this.productivityPanel.group);
 
-    // 4. Right Wing (Assistant, Validation, Approval, History) - curved inward at -26 deg
-    this.assistantPanel = new SpatialAssistantPanel(0.68, 0.50);
-    this.assistantPanel.setPosition(0.85, 1.32, -1.22).setRotationY(-26);
+    // 4. Right Wing (Assistant, Validation, Approval, History) - curved inward at -24 deg
+    this.assistantPanel = new SpatialAssistantPanel(0.65, 0.48);
+    this.assistantPanel.setPosition(0.82, 1.30, -1.28).setRotationY(-24);
     this.world.scene.add(this.assistantPanel.group);
 
-    this.validationExplorer = new SpatialValidationExplorer(0.68, 0.42);
-    this.validationExplorer.setPosition(0.85, 0.85, -1.22).setRotationY(-26);
+    this.validationExplorer = new SpatialValidationExplorer(0.65, 0.40);
+    this.validationExplorer.setPosition(0.82, 0.82, -1.28).setRotationY(-24);
     this.validationExplorer.group.visible = false;
     this.world.scene.add(this.validationExplorer.group);
 
-    this.approvalWorkflow = new SpatialApprovalWorkflow(this.api, 0.68, 0.50);
-    this.approvalWorkflow.setPosition(0.85, 1.32, -1.22).setRotationY(-26);
+    this.approvalWorkflow = new SpatialApprovalWorkflow(this.api, 0.65, 0.48);
+    this.approvalWorkflow.setPosition(0.82, 1.30, -1.28).setRotationY(-24);
     this.approvalWorkflow.group.visible = false;
     this.world.scene.add(this.approvalWorkflow.group);
 
-    this.actionHistoryPanel = new SpatialActionHistoryPanel(0.68, 0.42);
-    this.actionHistoryPanel.setPosition(0.85, 0.85, -1.22).setRotationY(-26);
+    this.actionHistoryPanel = new SpatialActionHistoryPanel(0.65, 0.40);
+    this.actionHistoryPanel.setPosition(0.82, 0.82, -1.28).setRotationY(-24);
     this.world.scene.add(this.actionHistoryPanel.group);
 
-    // Phase 9: Account & Preferences Panel - lower right tier
-    this.accountPanel = new SpatialAccountPanel(0.68, 0.42);
-    this.accountPanel.setPosition(0.85, 0.38, -1.22).setRotationY(-26);
+    // Phase 9: Account & Preferences Panel - lower right tier (raised)
+    this.accountPanel = new SpatialAccountPanel(0.65, 0.40);
+    this.accountPanel.setPosition(0.82, 0.48, -1.28).setRotationY(-24);
     this.world.scene.add(this.accountPanel.group);
 
     // Initialize empty baseline state on panels before network load
@@ -298,37 +298,57 @@ export class SpatialAppController {
    * Fetches real schedule, task, and audit data from the backend API.
    */
   async loadInitialData(): Promise<void> {
+    logger.info('SpatialAppController', 'Fetching schedule and tasks from backend API...');
+    let loadedAnything = false;
+
+    // 1. Session and account preferences
     try {
-      logger.info('SpatialAppController', 'Fetching schedule and tasks from backend API...');
       const session = await this.api.getSession();
       this.accountPanel.setAccount(session.user, session.preferences);
+      loadedAnything = true;
+    } catch (err) {
+      logger.warn('SpatialAppController', `Failed to load user session: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
-      try {
-        const calData = await this.api.getCalendarProviders();
-        this.accountPanel.setCalendarProviders(calData.providers);
-      } catch {
-        // Fallback to local default if calendar providers route unavailable
-      }
+    // 2. Calendar providers
+    try {
+      const calData = await this.api.getCalendarProviders();
+      this.accountPanel.setCalendarProviders(calData.providers);
+    } catch {
+      // Fallback gracefully
+    }
 
+    // 3. Primary schedule and task dashboard (critical)
+    try {
       const dashboard = await this.api.getDashboard();
       this.currentDashboardData = dashboard;
-
       this.timeline.setEvents(dashboard.events);
       this.taskPanel.setTasks(dashboard.tasks);
+      loadedAnything = true;
+      logger.info('SpatialAppController', `Loaded ${dashboard.events.length} events and ${dashboard.tasks.length} tasks`);
+    } catch (err) {
+      logger.warn('SpatialAppController', `Failed to load dashboard data: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
+    // 4. Action history / audit trail
+    try {
       const history = await this.api.getActionHistory();
       this.actionHistoryPanel.setHistoryEntries(history.entries);
-
-      try {
-        const insights = await this.api.getProductivityInsights();
-        this.productivityPanel.setInsights(insights);
-      } catch {
-        // Fallback gracefully if insights route unavailable
-      }
-
-      logger.info('SpatialAppController', `Loaded ${dashboard.events.length} events, ${dashboard.tasks.length} tasks, and ${history.entries.length} history records`);
     } catch (err) {
-      logger.warn('SpatialAppController', `Failed to load initial data from API: ${err instanceof Error ? err.message : String(err)}`);
+      logger.warn('SpatialAppController', `Failed to load action history: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // 5. Productivity insights
+    try {
+      const insights = await this.api.getProductivityInsights();
+      this.productivityPanel.setInsights(insights);
+    } catch {
+      // Fallback gracefully
+    }
+
+    if (loadedAnything) {
+      this.assistantPanel.showIdleState();
+    } else {
       this.assistantPanel.showStatusNotice(
         'WebXR Studio Ready\nConnect to local or remote PlanRescue server for live schedule synchronization.',
       );

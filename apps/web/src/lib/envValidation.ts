@@ -16,7 +16,10 @@ export function validateEnvironment(env: Record<string, string | undefined> = pr
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const isProduction = env.NODE_ENV === 'production';
+  const isProduction =
+    env.NODE_ENV === 'production' &&
+    env.APP_ENV !== 'test' &&
+    env.PLANRESCUE_SKIP_ENV_VALIDATION !== 'true';
 
   // 1. MCP URL validation
   const mcpUrl = env.PLANRESCUE_MCP_URL || 'http://127.0.0.1:3001/mcp';

@@ -124,7 +124,7 @@ export class DesktopInteractionFallback {
 
   private handleWheel(e: WheelEvent): void {
     if (!this.isEnabled) return;
-    this.camera.position.z = Math.max(-0.15, Math.min(0.55, this.camera.position.z + e.deltaY * 0.001));
+    this.camera.position.z = Math.max(-0.30, Math.min(0.70, this.camera.position.z + e.deltaY * 0.001));
   }
 
   dispose(): void {

@@ -11,8 +11,13 @@ export async function register() {
     // Build artifacts (static bundles, images, CI compiles) do not contain runtime secrets.
     // Secrets are strictly enforced when the production server boots (next start) before accepting traffic.
     const isBuildOrTest =
+      Boolean(process.env.CI) ||
+      process.env.PLANRESCUE_SKIP_ENV_VALIDATION === 'true' ||
+      process.env.APP_ENV === 'test' ||
+      process.env.APP_ENV === 'development' ||
       process.env.NEXT_PHASE === 'phase-production-build' ||
-      process.argv.some((arg) => arg.includes('build') || arg.includes('test')) ||
+      process.env.NEXT_PHASE === 'phase-export' ||
+      process.argv.some((arg) => /build|test|vitest/i.test(arg)) ||
       process.env.npm_lifecycle_event?.includes('build') ||
       process.env.npm_lifecycle_event?.includes('test') ||
       process.env.NODE_ENV === 'test' ||

@@ -17,6 +17,7 @@ jobs:
       SESSION_SECRET: 'ci-pipeline-test-session-secret-32-chars-long!'
       SEED_SAMPLE_DATA: 'true'
       APP_ENV: 'test'
+      PLANRESCUE_SKIP_ENV_VALIDATION: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

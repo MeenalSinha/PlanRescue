@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * Allows the hosted PlanRescue Spatial WebXR application (e.g. on GitHub Pages)
  * to communicate seamlessly with the production PlanRescue API.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const origin = request.headers.get('origin') ?? '*';
 
   // Handle preflight OPTIONS requests immediately
@@ -30,6 +30,8 @@ export function middleware(request: NextRequest) {
   response.headers.set('Access-Control-Allow-Credentials', 'true');
   return response;
 }
+
+export { proxy as middleware };
 
 export const config = {
   matcher: '/api/:path*',

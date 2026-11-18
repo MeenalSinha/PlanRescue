@@ -24,8 +24,8 @@ export class SpatialWorld {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0d1117);
 
-    this.camera = new THREE.PerspectiveCamera(65, 1, 0.1, 100);
-    this.camera.position.set(0, 1.25, 0.20); // Seated eye level and panoramic desktop viewing distance
+    this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 100);
+    this.camera.position.set(0, 1.25, 0.35); // Seated eye level, stepped back for full 3-tier visibility
 
     this.setupBasicEnvironment();
   }
