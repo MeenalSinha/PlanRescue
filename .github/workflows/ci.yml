@@ -39,8 +39,12 @@ jobs:
       - name: Install the web interface
         run: npm --prefix apps/web install --legacy-peer-deps
       - run: npm run typecheck:web
-      - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
-        run: npm run test:web
+      - name: Build backend artifacts for web tests
+        run: npm run build
+      - name: Build Next.js web application
+        run: npm run build:web
+      - name: Run web interface tests (component, integration and e2e)
+        run: npm test --prefix apps/web
       - name: Install the spatial VR application
         run: npm --prefix apps/vr install --legacy-peer-deps --ignore-scripts
       - run: npm run vr:typecheck
