@@ -79,8 +79,16 @@ async function startMcp(): Promise<McpHandle> {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  child.stdout?.on('data', (c: Buffer) => (output += c.toString()));
-  child.stderr?.on('data', (c: Buffer) => (output += c.toString()));
+  child.stdout?.on('data', (c: Buffer) => {
+    const s = c.toString();
+    output += s;
+    process.stdout.write(s);
+  });
+  child.stderr?.on('data', (c: Buffer) => {
+    const s = c.toString();
+    output += s;
+    process.stderr.write(s);
+  });
   const origin = `http://127.0.0.1:${port}`;
   try {
     await waitHealthy(origin, child, () => output);
@@ -129,8 +137,16 @@ export async function startStack(env: Record<string, string> = {}): Promise<Stac
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  web.stdout?.on('data', (c: Buffer) => (output += c.toString()));
-  web.stderr?.on('data', (c: Buffer) => (output += c.toString()));
+  web.stdout?.on('data', (c: Buffer) => {
+    const s = c.toString();
+    output += s;
+    process.stdout.write(s);
+  });
+  web.stderr?.on('data', (c: Buffer) => {
+    const s = c.toString();
+    output += s;
+    process.stderr.write(s);
+  });
   const webUrl = `http://127.0.0.1:${port}`;
 
   const deadline = Date.now() + 60_000;
@@ -140,7 +156,8 @@ export async function startStack(env: Record<string, string> = {}): Promise<Stac
       throw new Error(`The web server exited early.\n${output}`);
     }
     try {
-      if ((await fetch(webUrl)).ok) break;
+      const res = (await fetch(`${webUrl}/api/healthz`).catch(() => null)) ?? (await fetch(webUrl).catch(() => null));
+      if (res && res.status < 500) break;
     } catch {
       // not listening yet
     }
