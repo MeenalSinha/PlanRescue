@@ -94,7 +94,11 @@ async function startMcp(): Promise<McpHandle> {
     await waitHealthy(origin, child, () => output);
   } catch (error) {
     child.kill('SIGKILL');
-    rmSync(dir, { recursive: true, force: true });
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // ignore Windows file locks during abrupt failure
+    }
     throw error;
   }
   return {
@@ -104,7 +108,17 @@ async function startMcp(): Promise<McpHandle> {
     stop: () =>
       new Promise<void>((done) => {
         const finish = (): void => {
-          rmSync(dir, { recursive: true, force: true });
+          try {
+            rmSync(dir, { recursive: true, force: true });
+          } catch {
+            setTimeout(() => {
+              try {
+                rmSync(dir, { recursive: true, force: true });
+              } catch {
+                // ignore
+              }
+            }, 1000).unref();
+          }
           done();
         };
         if (child.exitCode !== null) return finish();

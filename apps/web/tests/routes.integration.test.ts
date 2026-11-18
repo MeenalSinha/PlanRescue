@@ -55,7 +55,7 @@ beforeAll(async () => {
 afterAll(async () => {
   delete process.env.PLANRESCUE_MCP_URL;
   delete process.env.PLANRESCUE_MCP_TIMEOUT_MS;
-  await server.stop();
+  if (server) await server.stop();
 });
 
 describe('GET /api/dashboard', () => {
