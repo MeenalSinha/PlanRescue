@@ -39,7 +39,7 @@ jobs:
         run: npm run test:web
       - name: Install the spatial VR application
         working-directory: apps/vr
-        run: npm ci
+        run: npm install
       - run: npm run vr:typecheck
       - name: Run all spatial VR tests (Three.js, WebXR, hand interactions, accessibility, optimization)
         run: npm run vr:test
