@@ -11,10 +11,6 @@ const config: NextConfig = {
   poweredByHeader: false,
   // The MCP client and SQLite are Node-only packages used from route handlers; keep them out of the bundle.
   serverExternalPackages: ['@modelcontextprotocol/client', 'better-sqlite3'],
-  experimental: {
-    // Disable automatic agent upgrade prompts during CI builds
-    agentUpgrade: false,
-  },
   // Defence in depth for the browser: no framing, no sniffing, no referrer leakage, WebXR permissions.
   async headers() {
     return [

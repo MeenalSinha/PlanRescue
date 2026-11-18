@@ -18,6 +18,8 @@ jobs:
       SEED_SAMPLE_DATA: 'true'
       APP_ENV: 'test'
       PLANRESCUE_SKIP_ENV_VALIDATION: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_DISABLE_UPDATE_CHECK: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

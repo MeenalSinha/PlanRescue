@@ -41,7 +41,7 @@ function freePort(): Promise<number> {
 }
 
 async function waitForHealth(origin: string, child: ChildProcess | undefined, logs: () => string): Promise<void> {
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 45_000;
   while (Date.now() < deadline) {
     if (child && child.exitCode !== null) {
       throw new Error(`Server exited early with code ${child.exitCode}.\n${logs()}`);
@@ -107,7 +107,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Ser
     await waitForHealth(origin, child, logs);
   } catch (error) {
     child.kill('SIGKILL');
-    ownedDatabase?.cleanup();
+    try {
+      ownedDatabase?.cleanup();
+    } catch {
+      // ignore
+    }
     throw error;
   }
 

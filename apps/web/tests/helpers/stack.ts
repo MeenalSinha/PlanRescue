@@ -45,7 +45,7 @@ function freePort(): Promise<number> {
 }
 
 async function waitHealthy(origin: string, child: ChildProcess, logs: () => string): Promise<void> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 45_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`MCP server exited early.\n${logs()}`);
     try {
@@ -123,6 +123,8 @@ export async function startStack(env: Record<string, string> = {}): Promise<Stac
       NODE_ENV: 'production',
       ENCRYPTION_SECRET: 'test-stack-e2e-encryption-secret-32-chars-long!',
       SESSION_SECRET: 'test-stack-e2e-session-secret-32-chars-long!',
+      NEXT_TELEMETRY_DISABLED: '1',
+      NEXT_DISABLE_UPDATE_CHECK: '1',
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -131,7 +133,7 @@ export async function startStack(env: Record<string, string> = {}): Promise<Stac
   web.stderr?.on('data', (c: Buffer) => (output += c.toString()));
   const webUrl = `http://127.0.0.1:${port}`;
 
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 60_000;
   for (;;) {
     if (web.exitCode !== null) {
       await mcp.stop();

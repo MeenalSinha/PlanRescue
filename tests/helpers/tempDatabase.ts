@@ -12,5 +12,21 @@ export interface TempDatabase {
 /** Create an isolated database location so no test touches the development database. */
 export function makeTempDatabase(): TempDatabase {
   const dir = mkdtempSync(join(tmpdir(), 'planrescue-test-'));
-  return { path: join(dir, 'planrescue.sqlite'), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return {
+    path: join(dir, 'planrescue.sqlite'),
+    cleanup: () => {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // Ignore or retry asynchronously if locked by exiting child process on Windows
+        setTimeout(() => {
+          try {
+            rmSync(dir, { recursive: true, force: true });
+          } catch {
+            // Ignore temporary directory cleanup failure
+          }
+        }, 1000);
+      }
+    },
+  };
 }
