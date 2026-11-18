@@ -31,7 +31,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/vr
-        run: npm install
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
       - name: Build Spatial VR App
         working-directory: apps/vr

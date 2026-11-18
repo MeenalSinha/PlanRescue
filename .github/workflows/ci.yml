@@ -33,13 +33,13 @@ jobs:
         run: npx vitest run tests/backupRestore.test.ts
       - name: Install the web interface
         working-directory: apps/web
-        run: npm ci
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
       - run: npm run typecheck:web
       - name: Build the web interface and run its tests (component, integration and end-to-end against the real MCP server)
         run: npm run test:web
       - name: Install the spatial VR application
         working-directory: apps/vr
-        run: npm install
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
       - run: npm run vr:typecheck
       - name: Run all spatial VR tests (Three.js, WebXR, hand interactions, accessibility, optimization)
         run: npm run vr:test
