@@ -6,8 +6,8 @@ const config: NextConfig = {
   // apps/web is its own npm package (the repo root has a separate lockfile); pin the build root here.
   turbopack: { root: fileURLToPath(new URL('.', import.meta.url)) },
   poweredByHeader: false,
-  // The MCP client is a Node-only package used from route handlers; keep it out of the bundle.
-  serverExternalPackages: ['@modelcontextprotocol/client'],
+  // The MCP client and SQLite are Node-only packages used from route handlers; keep them out of the bundle.
+  serverExternalPackages: ['@modelcontextprotocol/client', 'better-sqlite3'],
   experimental: {
     // Disable automatic agent upgrade prompts during CI builds
     agentUpgrade: false,

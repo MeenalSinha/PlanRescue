@@ -22,6 +22,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1156.0",
     "@modelcontextprotocol/client": "^2.3.1",
+    "better-sqlite3": "13.0.3",
     "next": "^16.4.2",
     "openai": "^7.43.0",
     "react": "^19.3.1",
@@ -32,6 +33,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
+    "@types/better-sqlite3": "9.6.0",
     "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

@@ -94,8 +94,12 @@ export async function loadRuntimeConfig(): Promise<VrConfig> {
   let fileRaw: Record<string, unknown> = {};
   if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
     try {
-      const response = await window.fetch('/config.json', { cache: 'no-cache' });
-      if (response.ok) {
+      const configUrl = (import.meta.env?.BASE_URL || './') + 'config.json';
+      let response = await window.fetch(configUrl, { cache: 'no-cache' }).catch(() => null);
+      if (!response || (!response.ok && configUrl !== '/config.json')) {
+        response = await window.fetch('/config.json', { cache: 'no-cache' }).catch(() => null);
+      }
+      if (response && response.ok) {
         fileRaw = await response.json();
       }
     } catch {
