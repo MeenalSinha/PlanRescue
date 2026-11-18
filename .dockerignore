@@ -1,0 +1,11 @@
+node_modules
+apps/web/node_modules
+apps/vr/node_modules
+.next
+apps/web/.next
+dist
+apps/vr/dist
+.git
+.github
+*.log
+data/*.sqlite*

@@ -77,23 +77,34 @@ export function initializeDatabase(
   logger?: Logger,
   options?: InitializeDatabaseOptions | boolean,
 ): InitializedDatabase {
+  let realLogger: Logger | undefined = logger;
+  let realOptions: InitializeDatabaseOptions | boolean | undefined = options;
+  if (logger && (typeof logger === 'boolean' || 'seed' in logger || typeof (logger as any).info !== 'function')) {
+    realOptions = logger as any;
+    realLogger = undefined;
+  }
+
   const { db, schemaVersion } = openDatabase(path);
   try {
     const isProduction =
       process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
 
     let shouldSeed = false;
-    if (typeof options === 'boolean') {
-      shouldSeed = options && !isProduction;
-    } else if (options && typeof options.seed === 'boolean') {
-      shouldSeed = options.seed && !isProduction;
+    if (process.env.SEED_SAMPLE_DATA === 'true') {
+      shouldSeed = true;
+    } else if (process.env.SEED_SAMPLE_DATA === 'false') {
+      shouldSeed = false;
+    } else if (typeof realOptions === 'boolean') {
+      shouldSeed = realOptions && !isProduction;
+    } else if (realOptions && typeof realOptions.seed === 'boolean') {
+      shouldSeed = realOptions.seed && !isProduction;
     } else if (isProduction) {
       shouldSeed = false;
-    } else if (process.env.SEED_SAMPLE_DATA === 'true') {
-      shouldSeed = true;
     } else if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
       // In automated test runner, maintain default test fixture behavior unless explicitly turned off
       shouldSeed = true;
+    } else {
+      shouldSeed = !isProduction;
     }
 
     const seeded = shouldSeed
@@ -101,11 +112,11 @@ export function initializeDatabase(
       : { eventsInserted: 0, tasksInserted: 0 };
 
     if (shouldSeed) {
-      logger?.debug(
+      realLogger?.debug(
         `Database ready: schema v${schemaVersion}/${LATEST_SCHEMA_VERSION}, seeded ${seeded.eventsInserted} events and ${seeded.tasksInserted} tasks`,
       );
     } else {
-      logger?.debug(
+      realLogger?.debug(
         `Database ready: schema v${schemaVersion}/${LATEST_SCHEMA_VERSION} (sample data seeding disabled)`,
       );
     }

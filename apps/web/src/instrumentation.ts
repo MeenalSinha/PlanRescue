@@ -6,15 +6,19 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    // During next build (phase-production-build), skip hard-failing on missing runtime deployment secrets.
+    // During next build (phase-production-build), CI compilation, and test execution,
+    // skip hard-failing on missing runtime deployment secrets.
     // Build artifacts (static bundles, images, CI compiles) do not contain runtime secrets.
     // Secrets are strictly enforced when the production server boots (next start) before accepting traffic.
-    const isBuildPhase =
+    const isBuildOrTest =
       process.env.NEXT_PHASE === 'phase-production-build' ||
-      process.env.npm_lifecycle_event === 'build' ||
-      process.env.npm_lifecycle_event === 'build:web';
+      process.argv.some((arg) => arg.includes('build') || arg.includes('test')) ||
+      process.env.npm_lifecycle_event?.includes('build') ||
+      process.env.npm_lifecycle_event?.includes('test') ||
+      process.env.NODE_ENV === 'test' ||
+      Boolean(process.env.VITEST);
 
-    if (isBuildPhase) {
+    if (isBuildOrTest) {
       return;
     }
 

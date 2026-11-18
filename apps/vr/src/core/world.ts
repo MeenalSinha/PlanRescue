@@ -24,8 +24,8 @@ export class SpatialWorld {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0d1117);
 
-    this.camera = new THREE.PerspectiveCamera(70, 1, 0.1, 100);
-    this.camera.position.set(0, 1.6, 0); // Average eye level in meters
+    this.camera = new THREE.PerspectiveCamera(65, 1, 0.1, 100);
+    this.camera.position.set(0, 1.25, 0.20); // Seated eye level and panoramic desktop viewing distance
 
     this.setupBasicEnvironment();
   }
@@ -35,13 +35,22 @@ export class SpatialWorld {
    */
   private setupBasicEnvironment(): void {
     // Ambient light for general studio visibility
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
     this.scene.add(ambientLight);
 
     // Directional key light
-    const keyLight = new THREE.DirectionalLight(0xe0e7ff, 0.8);
+    const keyLight = new THREE.DirectionalLight(0xe0e7ff, 0.85);
     keyLight.position.set(2, 4, 3);
     this.scene.add(keyLight);
+
+    // Brand accent fill lights for spatial depth and studio atmosphere
+    const leftFillLight = new THREE.PointLight(0x00e5ff, 0.4, 6);
+    leftFillLight.position.set(-2, 1.5, -0.5);
+    this.scene.add(leftFillLight);
+
+    const rightFillLight = new THREE.PointLight(0x8b5cf6, 0.4, 6);
+    rightFillLight.position.set(2, 1.5, -0.5);
+    this.scene.add(rightFillLight);
 
     // Ground reference grid (10m x 10m)
     const grid = new THREE.GridHelper(10, 20, 0x3b82f6, 0x1e293b);

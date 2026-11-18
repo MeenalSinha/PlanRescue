@@ -28,37 +28,37 @@
       }
       #hud-overlay {
         position: absolute;
-        top: 24px;
-        left: 24px;
+        top: 20px;
+        left: 20px;
         z-index: 10;
-        background: rgba(15, 23, 42, 0.85);
+        background: rgba(15, 23, 42, 0.82);
         backdrop-filter: blur(12px);
-        border: 1px solid rgba(59, 130, 246, 0.3);
+        border: 1px solid rgba(59, 130, 246, 0.25);
         border-radius: 12px;
-        padding: 20px 24px;
-        max-width: 420px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        padding: 14px 18px;
+        max-width: 320px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
       }
       h1 {
-        font-size: 1.25rem;
+        font-size: 1.15rem;
         font-weight: 700;
         letter-spacing: -0.025em;
         color: #60a5fa;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
       }
       .tagline {
-        font-size: 0.875rem;
+        font-size: 0.8rem;
         color: #94a3b8;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
       }
       .status-pill {
         display: inline-block;
-        padding: 4px 10px;
+        padding: 3px 8px;
         border-radius: 9999px;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
         font-weight: 600;
         text-transform: uppercase;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
       }
       .status-ready {
         background: rgba(16, 185, 129, 0.15);
@@ -76,15 +76,15 @@
         border: 1px solid rgba(239, 68, 68, 0.4);
       }
       .capabilities-list {
-        font-size: 0.8125rem;
+        font-size: 0.775rem;
         color: #cbd5e1;
-        margin-bottom: 16px;
-        line-height: 1.6;
+        margin-bottom: 12px;
+        line-height: 1.5;
       }
       .cap-item {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 4px;
+        margin-bottom: 3px;
       }
       .cap-val {
         font-weight: 600;
@@ -92,10 +92,10 @@
       .btn-vr {
         display: block;
         width: 100%;
-        padding: 12px 18px;
+        padding: 10px 14px;
         background: linear-gradient(135deg, #2563eb, #1d4ed8);
         color: #ffffff;
-        font-size: 0.9375rem;
+        font-size: 0.875rem;
         font-weight: 600;
         border: none;
         border-radius: 8px;
@@ -112,6 +112,14 @@
         color: #64748b;
         cursor: not-allowed;
       }
+      .desktop-hint {
+        margin-top: 10px;
+        font-size: 0.7rem;
+        color: #64748b;
+        text-align: center;
+        border-top: 1px solid rgba(51, 65, 85, 0.5);
+        padding-top: 8px;
+      }
     </style>
   </head>
   <body>
@@ -126,6 +134,7 @@
         <div class="cap-item"><span>Rendering:</span><span class="cap-val" id="cap-webgl">WebGL2</span></div>
       </div>
       <button id="btn-enter-vr" class="btn-vr" disabled>Enter VR</button>
+      <div class="desktop-hint">🖱️ Left-click interact · Right-click drag look · Wheel zoom</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

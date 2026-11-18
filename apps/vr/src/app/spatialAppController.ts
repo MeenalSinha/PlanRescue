@@ -87,56 +87,56 @@ export class SpatialAppController {
     this.recoveryManager = new SpatialRecoveryManager(this.api);
 
     // 2. Center Stage (Timeline, Tasks, Comparison)
-    this.timeline = new SpatialTimeline(this.interactionManager, { trackWidth: 1.3 });
-    this.timeline.setPosition(0, 1.35, -1.35);
+    this.timeline = new SpatialTimeline(this.interactionManager, { trackWidth: 1.15 });
+    this.timeline.setPosition(0, 1.32, -1.35);
     this.world.scene.add(this.timeline.group);
 
-    this.taskPanel = new SpatialTaskPanel(0.75, 0.45);
-    this.taskPanel.setPosition(0, 0.88, -1.35);
+    this.taskPanel = new SpatialTaskPanel(0.72, 0.42);
+    this.taskPanel.setPosition(0, 0.85, -1.35);
     this.world.scene.add(this.taskPanel.group);
 
-    this.comparisonWorkspace = new SpatialComparisonWorkspace(this.interactionManager, 1.35, 0.7);
+    this.comparisonWorkspace = new SpatialComparisonWorkspace(this.interactionManager, 1.25, 0.65);
     this.comparisonWorkspace.setPosition(0, 1.25, -1.35);
     this.comparisonWorkspace.group.visible = false;
     this.world.scene.add(this.comparisonWorkspace.group);
 
-    // 3. Left Wing (Disruption & Conflicts) - angled at -35 deg
-    this.disruptionPanel = new SpatialDisruptionPanel(0.7, 0.52);
-    this.disruptionPanel.setPosition(-1.15, 1.35, -1.0).setRotationY(35);
+    // 3. Left Wing (Disruption & Conflicts) - curved inward at 26 deg
+    this.disruptionPanel = new SpatialDisruptionPanel(0.68, 0.50);
+    this.disruptionPanel.setPosition(-0.85, 1.32, -1.22).setRotationY(26);
     this.world.scene.add(this.disruptionPanel.group);
 
-    this.conflictVisualizer = new SpatialConflictVisualizer(0.7, 0.45);
-    this.conflictVisualizer.setPosition(-1.15, 0.85, -1.0).setRotationY(35);
+    this.conflictVisualizer = new SpatialConflictVisualizer(0.68, 0.42);
+    this.conflictVisualizer.setPosition(-0.85, 0.85, -1.22).setRotationY(26);
     this.conflictVisualizer.group.visible = false;
     this.world.scene.add(this.conflictVisualizer.group);
 
     // Phase 11: Productivity & Health Intelligence Panel - lower left tier
-    this.productivityPanel = new SpatialProductivityPanel(0.7, 0.45);
-    this.productivityPanel.setPosition(-1.15, 0.35, -1.0).setRotationY(35);
+    this.productivityPanel = new SpatialProductivityPanel(0.68, 0.42);
+    this.productivityPanel.setPosition(-0.85, 0.38, -1.22).setRotationY(26);
     this.world.scene.add(this.productivityPanel.group);
 
-    // 4. Right Wing (Assistant, Validation, Approval, History) - angled at +35 deg
-    this.assistantPanel = new SpatialAssistantPanel(0.7, 0.52);
-    this.assistantPanel.setPosition(1.15, 1.35, -1.0).setRotationY(-35);
+    // 4. Right Wing (Assistant, Validation, Approval, History) - curved inward at -26 deg
+    this.assistantPanel = new SpatialAssistantPanel(0.68, 0.50);
+    this.assistantPanel.setPosition(0.85, 1.32, -1.22).setRotationY(-26);
     this.world.scene.add(this.assistantPanel.group);
 
-    this.validationExplorer = new SpatialValidationExplorer(0.7, 0.45);
-    this.validationExplorer.setPosition(1.15, 0.85, -1.0).setRotationY(-35);
+    this.validationExplorer = new SpatialValidationExplorer(0.68, 0.42);
+    this.validationExplorer.setPosition(0.85, 0.85, -1.22).setRotationY(-26);
     this.validationExplorer.group.visible = false;
     this.world.scene.add(this.validationExplorer.group);
 
-    this.approvalWorkflow = new SpatialApprovalWorkflow(this.api, 0.7, 0.52);
-    this.approvalWorkflow.setPosition(1.15, 1.35, -1.0).setRotationY(-35);
+    this.approvalWorkflow = new SpatialApprovalWorkflow(this.api, 0.68, 0.50);
+    this.approvalWorkflow.setPosition(0.85, 1.32, -1.22).setRotationY(-26);
     this.approvalWorkflow.group.visible = false;
     this.world.scene.add(this.approvalWorkflow.group);
 
-    this.actionHistoryPanel = new SpatialActionHistoryPanel(0.7, 0.45);
-    this.actionHistoryPanel.setPosition(1.15, 0.85, -1.0).setRotationY(-35);
+    this.actionHistoryPanel = new SpatialActionHistoryPanel(0.68, 0.42);
+    this.actionHistoryPanel.setPosition(0.85, 0.85, -1.22).setRotationY(-26);
     this.world.scene.add(this.actionHistoryPanel.group);
 
     // Phase 9: Account & Preferences Panel - lower right tier
-    this.accountPanel = new SpatialAccountPanel(0.7, 0.45);
-    this.accountPanel.setPosition(1.15, 0.35, -1.0).setRotationY(-35);
+    this.accountPanel = new SpatialAccountPanel(0.68, 0.42);
+    this.accountPanel.setPosition(0.85, 0.38, -1.22).setRotationY(-26);
     this.world.scene.add(this.accountPanel.group);
 
     // Initialize empty baseline state on panels before network load

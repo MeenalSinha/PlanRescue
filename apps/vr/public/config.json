@@ -1,4 +1,6 @@
 {
+  "appEnv": "production",
+  "apiBaseUrl": "https://murphy-skilled-offering-cayman.trycloudflare.com",
   "logLevel": "info",
   "requestTimeoutMs": 15000,
   "xr": {

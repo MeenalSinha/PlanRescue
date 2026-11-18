@@ -107,13 +107,29 @@ export async function loadRuntimeConfig(): Promise<VrConfig> {
     }
   }
 
-  // Step 3: Check runtime window injection
+  // Step 3: Check runtime window injection and search params
   const windowRaw = typeof window !== 'undefined' && window.__PLANRESCUE_VR_CONFIG__
     ? (window.__PLANRESCUE_VR_CONFIG__ as Record<string, unknown>)
     : {};
 
-  // Merge with strict priority: window injection > env vars > static file
-  const merged = mergeConfigSources(fileRaw, envRaw, windowRaw);
+  let queryRaw: Record<string, unknown> = {};
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      const searchStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+      if (searchStr) {
+        const params = new URLSearchParams(searchStr);
+        const apiParam = params.get('api') || params.get('apiUrl') || params.get('backend');
+        if (apiParam && apiParam.trim()) {
+          queryRaw.apiBaseUrl = apiParam.trim();
+        }
+      }
+    } catch {
+      // non-blocking
+    }
+  }
+
+  // Merge with strict priority: window injection > query params > env vars > static file
+  const merged = mergeConfigSources(fileRaw, envRaw, { ...queryRaw, ...windowRaw });
 
   // If in browser and apiBaseUrl is still not set, default to origin if http/https
   if (
