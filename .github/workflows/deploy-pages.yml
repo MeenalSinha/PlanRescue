@@ -31,8 +31,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm ci || npm install --legacy-peer-deps
-          npm --prefix apps/vr install --legacy-peer-deps
+          npm ci --ignore-scripts || npm install --legacy-peer-deps --ignore-scripts
+          npm --prefix apps/vr install --legacy-peer-deps --ignore-scripts
 
       - name: Build Spatial VR App
         run: npm run vr:build
